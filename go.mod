@@ -1,4 +1,4 @@
-module mrpg
+module multiplayer_server
 
 go 1.21.1
 
