@@ -13,6 +13,8 @@ type ChannelAndPort struct {
 	Channel chan int
 	Port int
 }
+
+
 func main() {
 	workerLines := make([]ChannelAndPort, 0, WORKER_COUNT)
 
@@ -38,6 +40,7 @@ func main() {
 			for message := range workerLine {
 				fmt.Println(message)
 			}
+
 		}(workerId, conn, workerLine)
 
 		workerLines = append(workerLines, ChannelAndPort{
@@ -48,10 +51,18 @@ func main() {
 	// Go에서 protobuf를 사용하기 위해 필요한 단계: https://protobuf.dev/getting-started/gotutorial/
 	// ex) protoc --go_out=$PWD proto/status.proto
 	http.HandleFunc("/get-worker-port", func(w http.ResponseWriter, r *http.Request) {
-
+		var channelAndPort ChannelAndPort
+		var err error
+		
+		workerLines,channelAndPort, err = Pop(workerLines)
 
 		w.Header().Set("Content-Type", "text/plain")
-		io.WriteString(w, fmt.Sprintf("%d", port))
+		if err != nil {
+			io.WriteString(w, "worker not available")
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		io.WriteString(w, fmt.Sprintf("%d", channelAndPort.Port))
 	})
 
 	log.Fatal(http.ListenAndServe(":8888", nil))
@@ -72,3 +83,5 @@ func main() {
 	// 	}
 	// }
 }
+
+
