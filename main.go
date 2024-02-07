@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -13,14 +14,13 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-
 const WORKER_COUNT int = 10
 
-type Job struct{
-	Id int32
-	X int32
-	Y int32
-	Items []int32
+type Job struct {
+	Id     int32
+	X      int32
+	Y      int32
+	Items  []int32
 	SentAt time.Time
 }
 
@@ -33,7 +33,7 @@ type ChannelAndPort struct {
 // graceful shutdown(wait until return이나 terminate signal(runtime.Goexit)등)을 만들지 않은 이유
 // main goroutine이 종료된다고 해서 나머지 goroutine이 동시에 처리되는 것은 아니나, 이는 leak을 만들지 않고 결국 종료된다.
 // 자세한 내용은 https://stackoverflow.com/questions/72553044/what-happens-to-unfinished-goroutines-when-the-main-parent-goroutine-exits-or-re을 참고
-func receiveDataFromClientAndSendJob(conn *net.UDPConn, jobSender chan <- Job, initWorker *sync.WaitGroup) {
+func receiveDataFromClientAndSendJob(conn *net.UDPConn, jobSender chan<- Job, initWorker *sync.WaitGroup) {
 	defer conn.Close()
 	initWorker.Done()
 
@@ -53,10 +53,10 @@ func receiveDataFromClientAndSendJob(conn *net.UDPConn, jobSender chan <- Job, i
 		}
 
 		jobSender <- Job{
-			Id:status.Id,
-			X: status.X,
-			Y: status.X,
-			Items: status.Items,
+			Id:     status.Id,
+			X:      status.X,
+			Y:      status.X,
+			Items:  status.Items,
 			SentAt: status.SentAt.AsTime(),
 		}
 	}
@@ -77,7 +77,7 @@ func work(workerId int, port int, initWorker *sync.WaitGroup, jobReceiver <-chan
 		case job := <-jobReceiver:
 			// not ok를 단순히 log로 처리하는 이유는 일정 정도의 데이터 누락을 무시하는
 			// UDP기반 데이터 정합성 처리의 특성을 따라 처리 과정에서 무시하기 위함이다.
-			println(job)
+			println(job.Id)
 		case <-disconnectSignal:
 			workerFunnel <- workerData
 		}
@@ -113,12 +113,26 @@ func main() {
 		go work(workerId, port, &initWorker, jobChannel, workerFunnel, disconnectSignal)
 	}
 
-	initWorker.Wait()
+	workerInitializationTimeout, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	workerInitializationSuccessSignal := make(chan bool)
 
-	if len(workerPool) != WORKER_COUNT {
-		panic("worker initialization failed")
-	} else {
-		println("worker initialization succeeded. main goroutine now receiving assign request")
+	go func() {
+		defer cancel()
+
+		initWorker.Wait()
+		workerInitializationSuccessSignal <- true
+	}()
+
+	select {
+	case <-workerInitializationTimeout.Done():
+		panic("worker initialization did not succeeded in 5 seconds")
+
+	case <-workerInitializationSuccessSignal:
+		if len(workerPool) != WORKER_COUNT {
+			panic(fmt.Sprintf("unexpected worker count: %d", len(workerPool)))
+		}
+
+		println("worker initialization succeeded")
 	}
 
 	// Go에서 protobuf를 사용하기 위해 필요한 단계: https://protobuf.dev/getting-started/gotutorial/
@@ -128,7 +142,7 @@ func main() {
 			w.WriteHeader(http.StatusBadRequest)
 			io.WriteString(w, "invalid request")
 
-			return 
+			return
 		}
 		var channelAndPort ChannelAndPort
 		var err error
@@ -152,11 +166,10 @@ func main() {
 		if r.Method != http.MethodPatch {
 			w.WriteHeader(http.StatusBadRequest)
 			io.WriteString(w, "invalid request")
-			
+
 			return
 		}
 
-		
 	})
 
 	log.Fatal(http.ListenAndServe(":8888", nil))
