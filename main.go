@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"multiplayer_server/protodef"
 	"net"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -25,9 +27,51 @@ type Job struct {
 }
 
 type ChannelAndPort struct {
-	WorkerID    int
 	JobReceiver <-chan Job
 	Port        int
+}
+
+type Worker struct {
+	ChannelAndPort
+	Working bool
+}
+
+type WorkerPool struct {
+	mtx sync.Mutex
+	pool map[int]Worker
+}
+
+func (wp *WorkerPool)Pull() (*Worker, error){
+	wp.mtx.Lock()
+
+	defer wp.mtx.Unlock()
+
+	for workerId, worker := range wp.pool {
+		if !worker.Working {
+			worker.Working = true
+			wp.pool[workerId] = worker
+
+			return &worker, nil
+		}
+	}
+
+	return nil, errors.New("worker currently not available")
+}
+
+func (wp *WorkerPool)Put(workerId int, worker Worker) {
+	wp.mtx.Lock()
+	wp.pool[workerId] = worker
+	wp.mtx.Unlock()
+}
+
+func (wp *WorkerPool)PoolSize() int {
+	return len(wp.pool)
+}
+
+func (wp *WorkerPool)GetWorkerById(workerId int) (Worker, bool) {
+	worker, ok := wp.pool[workerId]	
+
+	return worker, ok
 }
 
 // graceful shutdown(wait until return이나 terminate signal(runtime.Goexit)등)을 만들지 않은 이유
@@ -37,6 +81,7 @@ func receiveDataFromClientAndSendJob(conn *net.UDPConn, jobSender chan<- Job, in
 	defer conn.Close()
 	initWorker.Done()
 
+	println("data receiver initialized")
 	for {
 		buffer := make([]byte, 1024)
 		amount, _, err := conn.ReadFromUDP(buffer)
@@ -62,32 +107,29 @@ func receiveDataFromClientAndSendJob(conn *net.UDPConn, jobSender chan<- Job, in
 	}
 }
 
-func work(workerId int, port int, initWorker *sync.WaitGroup, jobReceiver <-chan Job, workerFunnel chan<- ChannelAndPort, disconnectSignal <-chan bool) {
-	workerData := ChannelAndPort{
-		WorkerID:    workerId,
+func work(workerId, port int, initWorker *sync.WaitGroup, jobReceiver <-chan Job, workerPool *WorkerPool) {
+	channelAndPort := ChannelAndPort{
 		JobReceiver: jobReceiver,
 		Port:        port,
 	}
 
-	workerFunnel <- workerData
-	initWorker.Done()
+	worker := Worker{
+		ChannelAndPort: channelAndPort,
+		Working: false,
+	}
 
-	for {
-		select {
-		case job := <-jobReceiver:
-			// not ok를 단순히 log로 처리하는 이유는 일정 정도의 데이터 누락을 무시하는
-			// UDP기반 데이터 정합성 처리의 특성을 따라 처리 과정에서 무시하기 위함이다.
-			println(job.Id)
-		case <-disconnectSignal:
-			workerFunnel <- workerData
-		}
+	workerPool.Put(workerId, worker)
+
+	initWorker.Done()
+	println("worker initialized")
+
+	for job := range jobReceiver {
+		println(job.Id)
 	}
 }
 
 func main() {
-	workerPool := make([]ChannelAndPort, 0, WORKER_COUNT)
-	workerFunnel := make(chan ChannelAndPort)
-	disconnectSignal := make(chan bool)
+	workerPool := WorkerPool{pool: make(map[int]Worker)}
 	var initWorker sync.WaitGroup
 
 	// main goroutine이 직접 요청을 받기전 WORKER_COUNT만큼 워커를 활성화
@@ -109,8 +151,9 @@ func main() {
 
 		// Add를 워커 시작전에 호출하는 이유는 Done이 Add보다 먼저 호출되는 경우를 막기 위해서이다.
 		initWorker.Add(2)
+		
 		go receiveDataFromClientAndSendJob(conn, jobChannel, &initWorker)
-		go work(workerId, port, &initWorker, jobChannel, workerFunnel, disconnectSignal)
+		go work(workerId, port, &initWorker, jobChannel, &workerPool)
 	}
 
 	workerInitializationTimeout, cancel := context.WithTimeout(context.Background(), time.Second*5)
@@ -128,8 +171,8 @@ func main() {
 		panic("worker initialization did not succeeded in 5 seconds")
 
 	case <-workerInitializationSuccessSignal:
-		if len(workerPool) != WORKER_COUNT {
-			panic(fmt.Sprintf("unexpected worker count: %d", len(workerPool)))
+		if workerPool.PoolSize() != WORKER_COUNT {
+			panic(fmt.Sprintf("unexpected worker count: %d", workerPool.PoolSize()))
 		}
 
 		println("worker initialization succeeded")
@@ -137,39 +180,48 @@ func main() {
 
 	// Go에서 protobuf를 사용하기 위해 필요한 단계: https://protobuf.dev/getting-started/gotutorial/
 	// ex) protoc --go_out=$PWD proto/status.proto
-	http.HandleFunc("/get-worker-port", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			w.WriteHeader(http.StatusBadRequest)
-			io.WriteString(w, "invalid request")
-
-			return
-		}
-		var channelAndPort ChannelAndPort
-		var err error
-
-		workerPool, channelAndPort, err = Pop(workerPool)
-
+	http.HandleFunc("GET /get-worker-port/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 
+		worker, err := workerPool.Pull()
 		if err != nil {
 			w.WriteHeader(http.StatusConflict)
-			io.WriteString(w, "worker not available")
+			io.WriteString(w, "worker currently not available")
 
 			return
 		}
 
 		w.WriteHeader(http.StatusOK)
-		io.WriteString(w, fmt.Sprintf("%d", channelAndPort.Port))
+		io.WriteString(w, fmt.Sprintf("%d", worker.ChannelAndPort.Port))
 	})
 
-	http.HandleFunc("/disconnect", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPatch {
+	http.HandleFunc("PATCH /disconnect/{workerId}/", func(w http.ResponseWriter, r *http.Request) {
+		workerId, err :=strconv.Atoi(r.PathValue("workerId"))
+		
+		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
-			io.WriteString(w, "invalid request")
+			io.WriteString(w, "worker id did not received")
+			return
+		}
+		worker, ok := workerPool.GetWorkerById(workerId)
 
+		if !ok {
+			w.WriteHeader(http.StatusBadRequest)
+			io.WriteString(w, "received worker id not found in worker pool")
 			return
 		}
 
+		if !worker.Working {
+			w.WriteHeader(http.StatusBadRequest)
+			io.WriteString(w, "worker is not working(already in the pool)")
+			return
+		}
+
+		worker.Working = false
+		workerPool.Put(workerId, worker)
+
+		w.WriteHeader(http.StatusOK)
+		io.WriteString(w, "worker successfully returned to pool")
 	})
 
 	log.Fatal(http.ListenAndServe(":8888", nil))
