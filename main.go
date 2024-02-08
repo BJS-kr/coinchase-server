@@ -2,139 +2,28 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"log"
-	"multiplayer_server/protodef"
+	"multiplayer_server/task"
+	"multiplayer_server/worker_pool"
 	"net"
 	"net/http"
 	"strconv"
 	"sync"
 	"time"
-
-	"google.golang.org/protobuf/proto"
 )
 
 const WORKER_COUNT int = 10
 
-type Job struct {
-	Id     int32
-	X      int32
-	Y      int32
-	Items  []int32
-	SentAt time.Time
-}
-
-type ChannelAndPort struct {
-	JobReceiver <-chan Job
-	Port        int
-}
-
-type Worker struct {
-	ChannelAndPort
-	Working bool
-}
-
-type WorkerPool struct {
-	mtx sync.Mutex
-	pool map[int]Worker
-}
-
-func (wp *WorkerPool)Pull() (*Worker, error){
-	wp.mtx.Lock()
-
-	defer wp.mtx.Unlock()
-
-	for workerId, worker := range wp.pool {
-		if !worker.Working {
-			worker.Working = true
-			wp.pool[workerId] = worker
-
-			return &worker, nil
-		}
-	}
-
-	return nil, errors.New("worker currently not available")
-}
-
-func (wp *WorkerPool)Put(workerId int, worker Worker) {
-	wp.mtx.Lock()
-	wp.pool[workerId] = worker
-	wp.mtx.Unlock()
-}
-
-func (wp *WorkerPool)PoolSize() int {
-	return len(wp.pool)
-}
-
-func (wp *WorkerPool)GetWorkerById(workerId int) (Worker, bool) {
-	worker, ok := wp.pool[workerId]	
-
-	return worker, ok
-}
-
-// graceful shutdown(wait until return이나 terminate signal(runtime.Goexit)등)을 만들지 않은 이유
-// main goroutine이 종료된다고 해서 나머지 goroutine이 동시에 처리되는 것은 아니나, 이는 leak을 만들지 않고 결국 종료된다.
-// 자세한 내용은 https://stackoverflow.com/questions/72553044/what-happens-to-unfinished-goroutines-when-the-main-parent-goroutine-exits-or-re을 참고
-func receiveDataFromClientAndSendJob(conn *net.UDPConn, jobSender chan<- Job, initWorker *sync.WaitGroup) {
-	defer conn.Close()
-	initWorker.Done()
-
-	println("data receiver initialized")
-	for {
-		buffer := make([]byte, 1024)
-		amount, _, err := conn.ReadFromUDP(buffer)
-
-		if err != nil {
-			log.Fatal(err.Error())
-		}
-
-		status := protodef.Status{}
-		desErr := proto.Unmarshal(buffer[:amount], &status)
-
-		if desErr != nil {
-			log.Fatal(err.Error())
-		}
-
-		jobSender <- Job{
-			Id:     status.Id,
-			X:      status.X,
-			Y:      status.X,
-			Items:  status.Items,
-			SentAt: status.SentAt.AsTime(),
-		}
-	}
-}
-
-func work(workerId, port int, initWorker *sync.WaitGroup, jobReceiver <-chan Job, workerPool *WorkerPool) {
-	channelAndPort := ChannelAndPort{
-		JobReceiver: jobReceiver,
-		Port:        port,
-	}
-
-	worker := Worker{
-		ChannelAndPort: channelAndPort,
-		Working: false,
-	}
-
-	workerPool.Put(workerId, worker)
-
-	initWorker.Done()
-	println("worker initialized")
-
-	for job := range jobReceiver {
-		println(job.Id)
-	}
-}
-
 func main() {
-	workerPool := WorkerPool{pool: make(map[int]Worker)}
+	workerPool := worker_pool.WorkerPool{}
+	workerPool.Initialize()
 	var initWorker sync.WaitGroup
 
 	// main goroutine이 직접 요청을 받기전 WORKER_COUNT만큼 워커를 활성화
 	for workerId := 0; workerId < WORKER_COUNT; workerId++ {
-		jobChannel := make(chan Job)
+		jobChannel := make(chan worker_pool.Job)
 		addr, err := net.ResolveUDPAddr("udp", ":0")
 
 		if err != nil {
@@ -152,8 +41,8 @@ func main() {
 		// Add를 워커 시작전에 호출하는 이유는 Done이 Add보다 먼저 호출되는 경우를 막기 위해서이다.
 		initWorker.Add(2)
 		
-		go receiveDataFromClientAndSendJob(conn, jobChannel, &initWorker)
-		go work(workerId, port, &initWorker, jobChannel, &workerPool)
+		go task.ReceiveDataFromClientAndSendJob(conn, jobChannel, &initWorker)
+		go task.Work(workerId, port, &initWorker, jobChannel, &workerPool)
 	}
 
 	workerInitializationTimeout, cancel := context.WithTimeout(context.Background(), time.Second*5)
