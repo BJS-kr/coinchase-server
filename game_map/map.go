@@ -1,7 +1,7 @@
 package game_map
 
 import (
-	"multiplayer_server/worker_pool"
+	"multiplayer_server/protodef"
 	"time"
 )
 
@@ -11,8 +11,8 @@ type FieldStatus struct {
 
 var gameMap [100][100]FieldStatus
 
-func DetermineUserPosition(userStatus worker_pool.Status) worker_pool.Position {
-	if time.Now().UnixMilli()-userStatus.SentAt.UnixMilli() > 30 {
+func DetermineUserPosition(userStatus protodef.Status) *protodef.Position {
+	if time.Now().UnixMilli()-userStatus.SentAt.AsTime().UnixMilli() > 40 {
 		return userStatus.LastValidPosition
 	}
 

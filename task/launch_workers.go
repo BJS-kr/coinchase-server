@@ -2,6 +2,7 @@ package task
 
 import (
 	"context"
+	"multiplayer_server/protodef"
 	"multiplayer_server/worker_pool"
 	"sync"
 	"time"
@@ -13,14 +14,14 @@ func LaunchWorkers(workerCount int) {
 
 	// main goroutine이 직접 요청을 받기전 WORKER_COUNT만큼 워커를 활성화
 	for workerId := 0; workerId < workerCount; workerId++ {
-		jobChannel := make(chan worker_pool.Status)
+		statusChannel := make(chan protodef.Status)
 		mutualTerminationSignal := make(chan bool)
 
 		// Add를 워커 시작전에 호출하는 이유는 Done이 Add보다 먼저 호출되는 경우를 막기 위해서이다.
 		initWorker.Add(2)
 		conn := MakeUDPConn()
-		go ReceiveDataFromClientAndSendJob(conn, jobChannel, &initWorker, mutualTerminationSignal)
-		go Process(conn, &initWorker, jobChannel, workerPool, mutualTerminationSignal)
+		go ReceiveDataFromClientAndSendJob(conn, statusChannel, &initWorker, mutualTerminationSignal)
+		go Process(conn, &initWorker, statusChannel, workerPool, mutualTerminationSignal)
 	}
 
 	workerInitializationTimeout, cancel := context.WithTimeout(context.Background(), time.Second*3)

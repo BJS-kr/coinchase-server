@@ -3,6 +3,7 @@ package task
 import (
 	"fmt"
 	"multiplayer_server/game_map"
+	"multiplayer_server/protodef"
 	"multiplayer_server/worker_pool"
 	"net"
 	"sync"
@@ -10,7 +11,7 @@ import (
 	"github.com/google/uuid"
 )
 
-func Process(conn *net.UDPConn, initWorker *sync.WaitGroup, statusReceiver <-chan worker_pool.Status, workerPool *worker_pool.WorkerPool, mutualTerminationSignal chan bool) {
+func Process(conn *net.UDPConn, initWorker *sync.WaitGroup, statusReceiver <-chan protodef.Status, workerPool *worker_pool.WorkerPool, mutualTerminationSignal chan bool) {
 	defer SendMutualTerminationSignal(mutualTerminationSignal)
 
 	port := conn.LocalAddr().(*net.UDPAddr).Port

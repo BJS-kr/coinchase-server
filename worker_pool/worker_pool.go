@@ -2,30 +2,11 @@ package worker_pool
 
 import (
 	"errors"
+	"multiplayer_server/protodef"
 
 	"sync"
-	"time"
 )
 
-type Position struct {
-	X int32
-	Y int32
-}
-
-type Item struct {
-	Id     string
-	Name   string
-	Amount int32
-}
-
-// 사실상 protodef.Status와 같지만 더 적은 데이터를 넘길 수 있도록 명시
-type Status struct {
-	Id                string
-	CurrentPosition   Position
-	Items             []Item
-	LastValidPosition Position
-	SentAt            time.Time
-}
 type WorkerPool struct {
 	mtx         sync.Mutex
 	Pool        map[string]Worker
@@ -33,7 +14,7 @@ type WorkerPool struct {
 }
 
 type Worker struct {
-	JobReceiver     <-chan Status
+	StatusReceiver  <-chan protodef.Status
 	Port            int
 	Working         bool
 	HealthChecker   chan bool
@@ -86,9 +67,9 @@ func (wp *WorkerPool) GetWorkerById(workerId string) (Worker, bool) {
 	return worker, ok
 }
 
-func (wp *WorkerPool) MakeWorker(jobReceiver <-chan Status, port int) Worker {
+func (wp *WorkerPool) MakeWorker(statusReceiver <-chan protodef.Status, port int) Worker {
 	return Worker{
-		JobReceiver:     jobReceiver,
+		StatusReceiver:  statusReceiver,
 		Port:            port,
 		Working:         false,
 		HealthChecker:   make(chan bool),
