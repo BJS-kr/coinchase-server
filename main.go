@@ -23,8 +23,6 @@ func main() {
 	// worker health check
 	go task.HealthCheckAndRevive(10)
 
-	// Go에서 protobuf를 사용하기 위해 필요한 단계: https://protobuf.dev/getting-started/gotutorial/
-	// ex) protoc --go_out=$PWD proto/status.proto
 	http.HandleFunc("GET /get-worker-port/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		workerPool := worker_pool.GetWorkerPool()

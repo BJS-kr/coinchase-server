@@ -14,7 +14,7 @@ func LaunchWorkers(workerCount int) {
 
 	// main goroutine이 직접 요청을 받기전 WORKER_COUNT만큼 워커를 활성화
 	for workerId := 0; workerId < workerCount; workerId++ {
-		statusChannel := make(chan protodef.Status)
+		statusChannel := make(chan *protodef.Status)
 		mutualTerminationSignal := make(chan bool)
 
 		// Add를 워커 시작전에 호출하는 이유는 Done이 Add보다 먼저 호출되는 경우를 막기 위해서이다.

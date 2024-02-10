@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 )
 
-func Process(conn *net.UDPConn, initWorker *sync.WaitGroup, statusReceiver <-chan protodef.Status, workerPool *worker_pool.WorkerPool, mutualTerminationSignal chan bool) {
+func Process(conn *net.UDPConn, initWorker *sync.WaitGroup, statusReceiver <-chan *protodef.Status, workerPool *worker_pool.WorkerPool, mutualTerminationSignal chan bool) {
 	defer SendMutualTerminationSignal(mutualTerminationSignal)
 
 	port := conn.LocalAddr().(*net.UDPAddr).Port

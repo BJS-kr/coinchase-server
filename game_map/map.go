@@ -11,7 +11,7 @@ type FieldStatus struct {
 
 var gameMap [100][100]FieldStatus
 
-func DetermineUserPosition(userStatus protodef.Status) *protodef.Position {
+func DetermineUserPosition(userStatus *protodef.Status) *protodef.Position {
 	if time.Now().UnixMilli()-userStatus.SentAt.AsTime().UnixMilli() > 40 {
 		return userStatus.LastValidPosition
 	}

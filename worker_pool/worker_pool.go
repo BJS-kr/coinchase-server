@@ -14,7 +14,7 @@ type WorkerPool struct {
 }
 
 type Worker struct {
-	StatusReceiver  <-chan protodef.Status
+	StatusReceiver  <-chan *protodef.Status
 	Port            int
 	Working         bool
 	HealthChecker   chan bool
@@ -67,7 +67,7 @@ func (wp *WorkerPool) GetWorkerById(workerId string) (Worker, bool) {
 	return worker, ok
 }
 
-func (wp *WorkerPool) MakeWorker(statusReceiver <-chan protodef.Status, port int) Worker {
+func (wp *WorkerPool) MakeWorker(statusReceiver <-chan *protodef.Status, port int) Worker {
 	return Worker{
 		StatusReceiver:  statusReceiver,
 		Port:            port,
