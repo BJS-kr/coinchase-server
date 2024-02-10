@@ -20,7 +20,7 @@ func LaunchWorkers(workerCount int) {
 		initWorker.Add(2)
 		conn := MakeUDPConn()
 		go ReceiveDataFromClientAndSendJob(conn, jobChannel, &initWorker, mutualTerminationSignal)
-		go Worker(conn, &initWorker, jobChannel, workerPool, mutualTerminationSignal)
+		go Process(conn, &initWorker, jobChannel, workerPool, mutualTerminationSignal)
 	}
 
 	workerInitializationTimeout, cancel := context.WithTimeout(context.Background(), time.Second*3)
