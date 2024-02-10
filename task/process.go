@@ -1,6 +1,8 @@
 package task
 
 import (
+	"fmt"
+	"multiplayer_server/game_map"
 	"multiplayer_server/worker_pool"
 	"net"
 	"sync"
@@ -8,11 +10,11 @@ import (
 	"github.com/google/uuid"
 )
 
-func Process(conn *net.UDPConn, initWorker *sync.WaitGroup, jobReceiver <-chan worker_pool.Job, workerPool *worker_pool.WorkerPool, mutualTerminationSignal chan bool) {
+func Process(conn *net.UDPConn, initWorker *sync.WaitGroup, statusReceiver <-chan worker_pool.Status, workerPool *worker_pool.WorkerPool, mutualTerminationSignal chan bool) {
 	defer SendMutualTerminationSignal(mutualTerminationSignal)
 
 	port := conn.LocalAddr().(*net.UDPAddr).Port
-	worker := workerPool.MakeWorker(jobReceiver, port)
+	worker := workerPool.MakeWorker(statusReceiver, port)
 	workerPool.Put(uuid.New().String(), worker)
 
 	initWorker.Done()
@@ -20,9 +22,10 @@ func Process(conn *net.UDPConn, initWorker *sync.WaitGroup, jobReceiver <-chan w
 
 	for {
 		select {
-		case job := <-jobReceiver:
+		case status := <-statusReceiver:
 			{
-
+				userPosition := game_map.DetermineUserPosition(status)
+				fmt.Println(userPosition)
 			}
 		case <-worker.ForceExitSignal:
 			// panic하는 이유는 mutual termination을 실행해야하기 때문이다.

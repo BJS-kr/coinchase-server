@@ -7,13 +7,24 @@ import (
 	"time"
 )
 
+type Position struct {
+	X int32
+	Y int32
+}
+
+type Item struct {
+	Id     string
+	Name   string
+	Amount int32
+}
+
 // 사실상 protodef.Status와 같지만 더 적은 데이터를 넘길 수 있도록 명시
-type Job struct {
-	Id     int32
-	X      int32
-	Y      int32
-	Items  []int32
-	SentAt time.Time
+type Status struct {
+	Id                string
+	CurrentPosition   Position
+	Items             []Item
+	LastValidPosition Position
+	SentAt            time.Time
 }
 type WorkerPool struct {
 	mtx         sync.Mutex
@@ -22,7 +33,7 @@ type WorkerPool struct {
 }
 
 type Worker struct {
-	JobReceiver     <-chan Job
+	JobReceiver     <-chan Status
 	Port            int
 	Working         bool
 	HealthChecker   chan bool
@@ -75,7 +86,7 @@ func (wp *WorkerPool) GetWorkerById(workerId string) (Worker, bool) {
 	return worker, ok
 }
 
-func (wp *WorkerPool) MakeWorker(jobReceiver <-chan Job, port int) Worker {
+func (wp *WorkerPool) MakeWorker(jobReceiver <-chan Status, port int) Worker {
 	return Worker{
 		JobReceiver:     jobReceiver,
 		Port:            port,

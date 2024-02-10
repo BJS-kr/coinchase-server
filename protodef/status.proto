@@ -1,15 +1,26 @@
 syntax = "proto3";
 
-package position;
+package status;
 
 import "google/protobuf/timestamp.proto";
 
 option go_package = "./protodef";
 
+message Position {
+    int32 x = 1;
+    int32 y = 2;
+}
+
+message Item {
+    string id = 1;
+    string name = 2;
+    int32 amount = 3;
+}
+
 message Status {
-    int32 id = 1;
-    int32 x = 2;
-    int32 y = 3;
-    repeated int32 items = 4;
+    string id = 1;
+    Position current_position = 2;
+    Position last_valid_position = 3;
+    repeated Item items = 4;
     google.protobuf.Timestamp sent_at = 5;
 }

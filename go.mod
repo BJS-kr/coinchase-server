@@ -1,6 +1,6 @@
 module multiplayer_server
 
-go 1.21.1
+go 1.22.0
 
 require google.golang.org/protobuf v1.32.0
 
