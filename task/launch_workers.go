@@ -4,8 +4,11 @@ import (
 	"context"
 	"multiplayer_server/protodef"
 	"multiplayer_server/worker_pool"
+	"net"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 func LaunchWorkers(workerCount int) {
@@ -19,9 +22,16 @@ func LaunchWorkers(workerCount int) {
 
 		// Add를 워커 시작전에 호출하는 이유는 Done이 Add보다 먼저 호출되는 경우를 막기 위해서이다.
 		initWorker.Add(2)
+
 		conn := MakeUDPConn()
-		go ReceiveDataFromClientAndSendJob(conn, statusChannel, &initWorker, mutualTerminationSignal)
-		go Process(conn, &initWorker, statusChannel, workerPool, mutualTerminationSignal)
+		port := conn.LocalAddr().(*net.UDPAddr).Port
+		worker := workerPool.MakeWorker(statusChannel, port)
+
+		worker.CollectedSendUserRelatedDataToClient = CollectToSendUserRelatedDataToClient(mutualTerminationSignal, time.Millisecond*100)
+		workerPool.Put(uuid.New().String(), worker)
+
+		go ReceiveDataFromClient(conn, statusChannel, &initWorker, mutualTerminationSignal)
+		go ProcessIncoming(worker, &initWorker, statusChannel, workerPool, mutualTerminationSignal)
 	}
 
 	workerInitializationTimeout, cancel := context.WithTimeout(context.Background(), time.Second*3)

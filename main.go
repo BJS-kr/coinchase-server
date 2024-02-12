@@ -6,6 +6,8 @@ import (
 	"log"
 	"multiplayer_server/task"
 	"multiplayer_server/worker_pool"
+	"net"
+	"strconv"
 
 	"net/http"
 )
@@ -23,16 +25,31 @@ func main() {
 	// worker health check
 	go task.HealthCheckAndRevive(10)
 
-	http.HandleFunc("GET /get-worker-port/", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("GET /get-worker-port/{userId}/{clientIP}/{clientPort}", func(w http.ResponseWriter, r *http.Request) {
+		userId := r.PathValue("userId")
+		clientIP := net.ParseIP(r.PathValue("clientIP"))
+		clientPort, err := strconv.Atoi(r.PathValue("clientPort"))
+
 		w.Header().Set("Content-Type", "text/plain")
+
+		if clientIP == nil || err != nil || userId == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			io.WriteString(w, "client information invalid")
+
+			return
+		}
+
 		workerPool := worker_pool.GetWorkerPool()
 		worker, err := workerPool.Pull()
+
 		if err != nil {
 			w.WriteHeader(http.StatusConflict)
 			io.WriteString(w, "worker currently not available")
 
 			return
 		}
+
+		worker.SetClientInformation(userId, &clientIP, clientPort)
 
 		w.WriteHeader(http.StatusOK)
 		io.WriteString(w, fmt.Sprintf("%d", worker.Port))
@@ -44,24 +61,20 @@ func main() {
 		if workerId == "" {
 			w.WriteHeader(http.StatusBadRequest)
 			io.WriteString(w, "worker id did not received")
+
 			return
 		}
+
 		workerPool := worker_pool.GetWorkerPool()
 		worker, ok := workerPool.GetWorkerById(workerId)
 
 		if !ok {
 			w.WriteHeader(http.StatusBadRequest)
 			io.WriteString(w, "received worker id not found in worker pool")
+
 			return
 		}
 
-		if !worker.Working {
-			w.WriteHeader(http.StatusBadRequest)
-			io.WriteString(w, "worker is not working(already in the pool)")
-			return
-		}
-
-		worker.Working = false
 		workerPool.Put(workerId, worker)
 
 		w.WriteHeader(http.StatusOK)
