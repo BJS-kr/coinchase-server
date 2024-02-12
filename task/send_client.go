@@ -1,6 +1,9 @@
 package task
 
-import "time"
+import (
+	"multiplayer_server/game_map"
+	"time"
+)
 
 func CollectToSendUserRelatedDataToClient(mutualTerminationSignal chan bool, interval time.Duration) func() {
 	// 먼저 공통의 자원을 수집하기 위해 deferred execution으로 처리
@@ -15,7 +18,7 @@ func CollectToSendUserRelatedDataToClient(mutualTerminationSignal chan bool, int
 			select {
 			case <-ticker.C:
 				{
-					// send data to client
+					sharedMap := game_map.GameMap.GetSharedMap()
 				}
 			case <-mutualTerminationSignal:
 				return

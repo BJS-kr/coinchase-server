@@ -10,9 +10,11 @@ type FieldStatus struct {
 	Occupied bool
 }
 
+type SharedMap [100][100]FieldStatus
+
 type RWMutexGameMap struct {
-	gameMap [100][100]FieldStatus
-	wMtx    sync.RWMutex
+	gameMap SharedMap
+	RWMtx   sync.RWMutex
 }
 
 var GameMap RWMutexGameMap
@@ -34,11 +36,20 @@ func (m *RWMutexGameMap) UpdateUserPosition(userStatus *protodef.Status) {
 		return
 	}
 
-	defer m.wMtx.Unlock()
+	defer m.RWMtx.Unlock()
 
-	m.wMtx.Lock()
+	m.RWMtx.Lock()
 	m.gameMap[userStatus.LastValidPosition.X][userStatus.LastValidPosition.Y].Occupied = false
 	m.gameMap[userStatus.CurrentPosition.X][userStatus.CurrentPosition.X].Occupied = true
+}
+
+func (m *RWMutexGameMap) GetSharedMap() SharedMap {
+	defer m.RWMtx.RUnlock()
+
+	// RLock은 여러 goroutine이 획득할 수 있으나, WLock(RWMutex.Lock)은 RLock을 잠그므로 클라이언트가 언제나 업데이트된 상태의 맵을 받을 수 있다.
+	m.RWMtx.RLock()
+
+	return m.gameMap
 }
 
 func (m *RWMutexGameMap) delta(userStatus *protodef.Status) *protodef.Position {
