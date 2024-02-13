@@ -7,6 +7,8 @@ import (
 	"net"
 	"sync"
 
+	"log/slog"
+
 	"google.golang.org/protobuf/proto"
 )
 
@@ -22,7 +24,7 @@ func ReceiveDataFromClient(conn *net.UDPConn, statusSender chan<- *protodef.Stat
 
 	initWorker.Done()
 
-	println("data receiver initialized")
+	slog.Info("Client data receiver initialized")
 
 	for {
 		select {

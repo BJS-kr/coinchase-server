@@ -98,21 +98,25 @@ func (wp *WorkerPool) Pull() (*Worker, error) {
 }
 
 func (wp *WorkerPool) Put(workerId string, worker *Worker) {
-	if worker.Status != WORKING {
+	if worker.Status != WORKING && worker.Status != IDLE {
 		worker.ForceExitSignal <- true
-		slog.Debug("INVALID STATUS CHANGE: WORKER STATUS NOT \"WORKING\"")
+		slog.Debug("INVALID STATUS CHANGE: WORKER STATUS NOT \"WORKING\" OR \"IDLE\"")
 
 		return
 	}
 
-	worker.StopClientSendSignal <- true
+	if worker.Status == WORKING {
+		worker.StopClientSendSignal <- true
+	}
 
 	worker.Status = IDLE
 	worker.OwnerUserID = ""
 	worker.ClientIP = nil
 	worker.ClientPort = 0
 
-	slog.Info("put back Worker to pool")
+	wp.Pool[workerId] = worker
+
+	slog.Info("Put Worker to pool")
 }
 
 func (wp *WorkerPool) PoolSize() int {

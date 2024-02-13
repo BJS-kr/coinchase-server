@@ -21,13 +21,15 @@ func main() {
 	task.LaunchWorkers(WORKER_COUNT)
 
 	if workerPool := worker_pool.GetWorkerPool(); len(workerPool.Pool) != WORKER_COUNT {
-		panic("worker pool initialization failed")
+		panic(fmt.Sprintf("worker pool initialization failed. initialized count: %d, expected count: %d", len(workerPool.Pool), WORKER_COUNT))
 	}
 
 	// worker health check
 	go task.HealthCheckAndRevive(10)
 
-	game_map.GameMap.Map.YFields = make([]*protodef.XField, 100)
+	game_map.GameMap.Map = &protodef.YField{
+		YFields: make([]*protodef.XField, 100),
+	}
 
 	http.HandleFunc("GET /get-worker-port/{userId}/{clientIP}/{clientPort}", func(w http.ResponseWriter, r *http.Request) {
 		userId := r.PathValue("userId")

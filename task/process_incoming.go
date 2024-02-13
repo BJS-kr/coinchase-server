@@ -24,7 +24,6 @@ func ProcessIncoming(worker *worker_pool.Worker, initWorker *sync.WaitGroup, sta
 		case <-worker.ForceExitSignal:
 			// panic하는 이유는 mutual termination을 실행해야하기 때문이다.
 			// 이에 따라 자동으로 UDP Receiver도 종료될 것이다.
-
 			panic("forced exit occurred by signal")
 
 		case <-worker.HealthChecker:
