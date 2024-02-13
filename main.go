@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"multiplayer_server/game_map"
+	"multiplayer_server/protodef"
 	"multiplayer_server/task"
 	"multiplayer_server/worker_pool"
 	"net"
@@ -24,6 +26,8 @@ func main() {
 
 	// worker health check
 	go task.HealthCheckAndRevive(10)
+
+	game_map.GameMap.Map.YFields = make([]*protodef.XField, 100)
 
 	http.HandleFunc("GET /get-worker-port/{userId}/{clientIP}/{clientPort}", func(w http.ResponseWriter, r *http.Request) {
 		userId := r.PathValue("userId")
@@ -50,9 +54,11 @@ func main() {
 		}
 
 		worker.SetClientInformation(userId, &clientIP, clientPort)
-
+		
 		w.WriteHeader(http.StatusOK)
 		io.WriteString(w, fmt.Sprintf("%d", worker.Port))
+		
+		worker.StartSendUserRelatedDataToClient()
 	})
 
 	http.HandleFunc("PATCH /disconnect/{workerId}/", func(w http.ResponseWriter, r *http.Request) {

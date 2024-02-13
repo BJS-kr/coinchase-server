@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package game_map;
+
+option go_package = "./protodef";
+
+message FieldStatus {
+    bool occupied = 1;
+}
+message XField {
+    repeated FieldStatus x_fields = 1;
+}
+message YField {
+    repeated XField y_fields = 1;
+}

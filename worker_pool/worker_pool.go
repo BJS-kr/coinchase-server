@@ -35,7 +35,8 @@ type Worker struct {
 	StatusReceiver                       <-chan *protodef.Status
 	HealthChecker                        chan bool
 	ForceExitSignal                      chan bool
-	CollectedSendUserRelatedDataToClient func()
+	StopClientSendSignal				 chan bool
+	CollectedSendUserRelatedDataToClient func(clientID string, clientIP *net.IP, clientPort int, stopClientSendSignal chan bool)
 }
 
 func (w *Worker) SetClientInformation(userId string, clientIP *net.IP, clientPort int) {
@@ -61,6 +62,8 @@ func (w *Worker) StartSendUserRelatedDataToClient() bool {
 	}
 
 	w.Status = WORKING
+
+	go w.CollectedSendUserRelatedDataToClient(w.OwnerUserID, w.ClientIP, w.ClientPort, w.StopClientSendSignal)
 
 	return true
 }
@@ -102,6 +105,8 @@ func (wp *WorkerPool) Put(workerId string, worker *Worker) {
 		return
 	}
 
+	worker.StopClientSendSignal <- true
+
 	worker.Status = IDLE
 	worker.OwnerUserID = ""
 	worker.ClientIP = nil
@@ -127,7 +132,7 @@ func (wp *WorkerPool) MakeWorker(statusReceiver <-chan *protodef.Status, port in
 		Status:          IDLE,
 		HealthChecker:   make(chan bool),
 		ForceExitSignal: make(chan bool),
-
+		StopClientSendSignal: make(chan bool),
 		//UserID와 ClientIP와 ClientPort는 추후 워커가 유저에게 할당 될 때 설정된다.
 	}
 }
