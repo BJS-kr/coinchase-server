@@ -32,7 +32,7 @@ func ReceiveDataFromClient(conn *net.UDPConn, statusSender chan<- *protodef.Stat
 			return
 
 		default:
-			// IPv4체계에서 최소 패킷의 크기는 576bytes이다.
+			// IPv4체계에서 최소 패킷의 크기는 576bytes이다(https://networkengineering.stackexchange.com/questions/76459/what-is-the-minimum-mtu-of-ipv4-68-bytes-or-576-bytes#:~:text=576%20bytes%20is%20the%20minimum%20IPv4%20packet%20(datagram)%20size%20that,must%20be%20able%20to%20handle).
 			// 이 중 헤더를 뺀 값이 508bytes이며, 이는 UDP라 할지라도 절대 나뉘어질 수 없는 최소크기이다.
 			// 그러나 일반적으로 2의 제곱수를 할당하는 것이 관례이므로 576보다 큰 최소 2의 제곱수 1024로 buffer를 만든다.
 			buffer := make([]byte, 1024)
