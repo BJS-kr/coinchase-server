@@ -7,8 +7,8 @@ import (
 )
 
 type RWMutexGameMap struct {
-	Map *protodef.GameMap
-	RWMtx   sync.RWMutex
+	Map   *protodef.GameMap
+	RWMtx sync.RWMutex
 }
 
 var GameMap RWMutexGameMap
@@ -24,7 +24,7 @@ func (m *RWMutexGameMap) UpdateUserPosition(userStatus *protodef.Status) {
 	defer m.RWMtx.Unlock()
 	m.RWMtx.Lock()
 
-	if 	m.isDelayedOver(userStatus, 40) ||
+	if m.isDelayedOver(userStatus, 40) ||
 		m.isOutOfRange(userStatus) ||
 		m.isOccupied(userStatus) {
 
@@ -36,6 +36,7 @@ func (m *RWMutexGameMap) UpdateUserPosition(userStatus *protodef.Status) {
 		Y: userStatus.CurrentPosition.Y,
 	}
 	m.Map.Rows[userStatus.CurrentPosition.X].Cells[userStatus.CurrentPosition.Y].Occupied = true
+	m.Map.Rows[userStatus.CurrentPosition.X].Cells[userStatus.CurrentPosition.Y].Owner = userStatus.Id
 }
 
 func (m *RWMutexGameMap) GetSharedMap() *protodef.GameMap {
@@ -46,8 +47,6 @@ func (m *RWMutexGameMap) GetSharedMap() *protodef.GameMap {
 
 	return m.Map
 }
-
-
 
 func (m *RWMutexGameMap) isOutOfRange(userStatus *protodef.Status) bool {
 	return userStatus.CurrentPosition.X > 99 ||

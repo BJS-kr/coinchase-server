@@ -17,8 +17,8 @@ func CollectToSendUserRelatedDataToClient(mutualTerminationSignal chan bool, int
 	return func(clientId string, clientIP *net.IP, clientPort int, stopClientSendSignal chan bool) {
 		defer SendMutualTerminationSignal(mutualTerminationSignal)
 		clientAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", clientIP.String(), clientPort))
-		
-		if err !=nil {
+
+		if err != nil {
 			slog.Debug(err.Error())
 			panic(err)
 		}
@@ -42,10 +42,10 @@ func CollectToSendUserRelatedDataToClient(mutualTerminationSignal chan bool, int
 					userPosition := game_map.UserPositions[clientId]
 					userPositionedMap := protodef.UserPositionedGameMap{
 						UserPosition: userPosition,
-						GameMap: sharedMap,
+						GameMap:      sharedMap,
 					}
 					data, err := proto.Marshal(&userPositionedMap)
-					
+
 					if err != nil {
 						slog.Debug(err.Error())
 						panic(err)
@@ -59,9 +59,9 @@ func CollectToSendUserRelatedDataToClient(mutualTerminationSignal chan bool, int
 			// client send만 죽일 필요가 있기 때문에 또 다른 시그널이 필요해진다.
 			// 이 시그널은 worker가 worker pool에 put될 때 수신된다.
 			case <-stopClientSendSignal:
-				return 
+				return
 			}
-			
+
 		}
 	}
 }

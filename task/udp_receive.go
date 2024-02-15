@@ -1,6 +1,7 @@
 package task
 
 import (
+	"fmt"
 	"log"
 	"multiplayer_server/protodef"
 
@@ -29,6 +30,7 @@ func ReceiveDataFromClient(conn *net.UDPConn, statusSender chan<- *protodef.Stat
 	for {
 		select {
 		case <-mutualTerminationSignal:
+			slog.Info("Termination signal receive in UDP receiver")
 			return
 
 		default:
@@ -38,6 +40,7 @@ func ReceiveDataFromClient(conn *net.UDPConn, statusSender chan<- *protodef.Stat
 			buffer := make([]byte, 1024)
 			amount, _, err := conn.ReadFromUDP(buffer)
 			if err != nil {
+
 				log.Fatal(err.Error())
 			}
 
@@ -45,9 +48,10 @@ func ReceiveDataFromClient(conn *net.UDPConn, statusSender chan<- *protodef.Stat
 			desErr := proto.Unmarshal(buffer[:amount], &status)
 
 			if desErr != nil {
+
 				log.Fatal(err.Error())
 			}
-
+			fmt.Println("data received", status)
 			statusSender <- &status
 		}
 

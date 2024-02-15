@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"multiplayer_server/game_map"
 	"multiplayer_server/protodef"
 	"multiplayer_server/task"
@@ -14,7 +15,10 @@ import (
 	"net/http"
 )
 
-const WORKER_COUNT int = 10
+const (
+	WORKER_COUNT int = 10
+	MAP_SIZE     int = 10
+)
 
 func main() {
 	// initializeWorkers
@@ -28,17 +32,25 @@ func main() {
 	go task.HealthCheckAndRevive(10)
 
 	game_map.GameMap.Map = &protodef.GameMap{
-		Rows: make([]*protodef.Row, 100),
+		Rows: make([]*protodef.Row, 0, MAP_SIZE),
 	}
+
 	for _, row := range game_map.GameMap.Map.Rows {
-		row.Cells = make([]*protodef.Cell, 100)
+		game_map.GameMap.Map.Rows = append(game_map.GameMap.Map.Rows, &protodef.Row{})
+		row.Cells = make([]*protodef.Cell, MAP_SIZE)
+		for i := 0; i < MAP_SIZE; i++ {
+			row.Cells[i] = &protodef.Cell{}
+		}
 	}
+
 	game_map.UserPositions = make(map[string]*protodef.Position)
 
 	http.HandleFunc("GET /get-worker-port/{userId}/{clientIP}/{clientPort}", func(w http.ResponseWriter, r *http.Request) {
 		userId := r.PathValue("userId")
 		clientIP := net.ParseIP(r.PathValue("clientIP"))
 		clientPort, err := strconv.Atoi(r.PathValue("clientPort"))
+
+		slog.Info("client information", "userId", userId, "clientIP", clientIP, "clientPort", clientPort)
 
 		w.Header().Set("Content-Type", "text/plain")
 
@@ -60,11 +72,12 @@ func main() {
 		}
 
 		worker.SetClientInformation(userId, &clientIP, clientPort)
-		
+
 		w.WriteHeader(http.StatusOK)
 		io.WriteString(w, fmt.Sprintf("%d", worker.Port))
-		
+
 		worker.StartSendUserRelatedDataToClient()
+
 	})
 
 	http.HandleFunc("PATCH /disconnect/{workerId}/", func(w http.ResponseWriter, r *http.Request) {
