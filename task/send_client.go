@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"multiplayer_server/game_map"
+	"multiplayer_server/protodef"
 	"net"
 	"time"
 
@@ -38,7 +39,12 @@ func CollectToSendUserRelatedDataToClient(mutualTerminationSignal chan bool, int
 				{
 					// 일단 POC해보기 위해 전체 맵 데이터보냄
 					sharedMap := game_map.GameMap.GetSharedMap()
-					data, err := proto.Marshal(sharedMap)
+					userPosition := game_map.UserPositions[clientId]
+					userPositionedMap := protodef.UserPositionedGameMap{
+						UserPosition: userPosition,
+						GameMap: sharedMap,
+					}
+					data, err := proto.Marshal(&userPositionedMap)
 					
 					if err != nil {
 						slog.Debug(err.Error())

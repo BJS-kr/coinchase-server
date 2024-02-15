@@ -27,9 +27,13 @@ func main() {
 	// worker health check
 	go task.HealthCheckAndRevive(10)
 
-	game_map.GameMap.Map = &protodef.YField{
-		YFields: make([]*protodef.XField, 100),
+	game_map.GameMap.Map = &protodef.GameMap{
+		Rows: make([]*protodef.Row, 100),
 	}
+	for _, row := range game_map.GameMap.Map.Rows {
+		row.Cells = make([]*protodef.Cell, 100)
+	}
+	game_map.UserPositions = make(map[string]*protodef.Position)
 
 	http.HandleFunc("GET /get-worker-port/{userId}/{clientIP}/{clientPort}", func(w http.ResponseWriter, r *http.Request) {
 		userId := r.PathValue("userId")

@@ -1,15 +1,22 @@
 syntax = "proto3";
 
+import public "protodef/status.proto";
 package game_map;
 
 option go_package = "./protodef";
 
-message FieldStatus {
+message Cell {
     bool occupied = 1;
+    string owner = 2;
 }
-message XField {
-    repeated FieldStatus x_fields = 1;
+message Row {
+    repeated Cell cells = 1;
 }
-message YField {
-    repeated XField y_fields = 1;
+message GameMap {
+    repeated Row rows = 1;
 }
+message UserPositionedGameMap {
+    status.Position user_position = 1;
+    GameMap game_map = 2;
+}
+

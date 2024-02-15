@@ -20,16 +20,17 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-type FieldStatus struct {
+type Cell struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Occupied bool `protobuf:"varint,1,opt,name=occupied,proto3" json:"occupied,omitempty"`
+	Occupied bool   `protobuf:"varint,1,opt,name=occupied,proto3" json:"occupied,omitempty"`
+	Owner    string `protobuf:"bytes,2,opt,name=owner,proto3" json:"owner,omitempty"`
 }
 
-func (x *FieldStatus) Reset() {
-	*x = FieldStatus{}
+func (x *Cell) Reset() {
+	*x = Cell{}
 	if protoimpl.UnsafeEnabled {
 		mi := &file_protodef_game_map_proto_msgTypes[0]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -37,13 +38,13 @@ func (x *FieldStatus) Reset() {
 	}
 }
 
-func (x *FieldStatus) String() string {
+func (x *Cell) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*FieldStatus) ProtoMessage() {}
+func (*Cell) ProtoMessage() {}
 
-func (x *FieldStatus) ProtoReflect() protoreflect.Message {
+func (x *Cell) ProtoReflect() protoreflect.Message {
 	mi := &file_protodef_game_map_proto_msgTypes[0]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -55,28 +56,35 @@ func (x *FieldStatus) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use FieldStatus.ProtoReflect.Descriptor instead.
-func (*FieldStatus) Descriptor() ([]byte, []int) {
+// Deprecated: Use Cell.ProtoReflect.Descriptor instead.
+func (*Cell) Descriptor() ([]byte, []int) {
 	return file_protodef_game_map_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *FieldStatus) GetOccupied() bool {
+func (x *Cell) GetOccupied() bool {
 	if x != nil {
 		return x.Occupied
 	}
 	return false
 }
 
-type XField struct {
+func (x *Cell) GetOwner() string {
+	if x != nil {
+		return x.Owner
+	}
+	return ""
+}
+
+type Row struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	XFields []*FieldStatus `protobuf:"bytes,1,rep,name=x_fields,json=xFields,proto3" json:"x_fields,omitempty"`
+	Cells []*Cell `protobuf:"bytes,1,rep,name=cells,proto3" json:"cells,omitempty"`
 }
 
-func (x *XField) Reset() {
-	*x = XField{}
+func (x *Row) Reset() {
+	*x = Row{}
 	if protoimpl.UnsafeEnabled {
 		mi := &file_protodef_game_map_proto_msgTypes[1]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -84,13 +92,13 @@ func (x *XField) Reset() {
 	}
 }
 
-func (x *XField) String() string {
+func (x *Row) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*XField) ProtoMessage() {}
+func (*Row) ProtoMessage() {}
 
-func (x *XField) ProtoReflect() protoreflect.Message {
+func (x *Row) ProtoReflect() protoreflect.Message {
 	mi := &file_protodef_game_map_proto_msgTypes[1]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -102,28 +110,28 @@ func (x *XField) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use XField.ProtoReflect.Descriptor instead.
-func (*XField) Descriptor() ([]byte, []int) {
+// Deprecated: Use Row.ProtoReflect.Descriptor instead.
+func (*Row) Descriptor() ([]byte, []int) {
 	return file_protodef_game_map_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *XField) GetXFields() []*FieldStatus {
+func (x *Row) GetCells() []*Cell {
 	if x != nil {
-		return x.XFields
+		return x.Cells
 	}
 	return nil
 }
 
-type YField struct {
+type GameMap struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	YFields []*XField `protobuf:"bytes,1,rep,name=y_fields,json=yFields,proto3" json:"y_fields,omitempty"`
+	Rows []*Row `protobuf:"bytes,1,rep,name=rows,proto3" json:"rows,omitempty"`
 }
 
-func (x *YField) Reset() {
-	*x = YField{}
+func (x *GameMap) Reset() {
+	*x = GameMap{}
 	if protoimpl.UnsafeEnabled {
 		mi := &file_protodef_game_map_proto_msgTypes[2]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -131,13 +139,13 @@ func (x *YField) Reset() {
 	}
 }
 
-func (x *YField) String() string {
+func (x *GameMap) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*YField) ProtoMessage() {}
+func (*GameMap) ProtoMessage() {}
 
-func (x *YField) ProtoReflect() protoreflect.Message {
+func (x *GameMap) ProtoReflect() protoreflect.Message {
 	mi := &file_protodef_game_map_proto_msgTypes[2]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -149,14 +157,69 @@ func (x *YField) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use YField.ProtoReflect.Descriptor instead.
-func (*YField) Descriptor() ([]byte, []int) {
+// Deprecated: Use GameMap.ProtoReflect.Descriptor instead.
+func (*GameMap) Descriptor() ([]byte, []int) {
 	return file_protodef_game_map_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *YField) GetYFields() []*XField {
+func (x *GameMap) GetRows() []*Row {
 	if x != nil {
-		return x.YFields
+		return x.Rows
+	}
+	return nil
+}
+
+type UserPositionedGameMap struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	UserPosition *Position `protobuf:"bytes,1,opt,name=user_position,json=userPosition,proto3" json:"user_position,omitempty"`
+	GameMap      *GameMap  `protobuf:"bytes,2,opt,name=game_map,json=gameMap,proto3" json:"game_map,omitempty"`
+}
+
+func (x *UserPositionedGameMap) Reset() {
+	*x = UserPositionedGameMap{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_protodef_game_map_proto_msgTypes[3]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *UserPositionedGameMap) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UserPositionedGameMap) ProtoMessage() {}
+
+func (x *UserPositionedGameMap) ProtoReflect() protoreflect.Message {
+	mi := &file_protodef_game_map_proto_msgTypes[3]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UserPositionedGameMap.ProtoReflect.Descriptor instead.
+func (*UserPositionedGameMap) Descriptor() ([]byte, []int) {
+	return file_protodef_game_map_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *UserPositionedGameMap) GetUserPosition() *Position {
+	if x != nil {
+		return x.UserPosition
+	}
+	return nil
+}
+
+func (x *UserPositionedGameMap) GetGameMap() *GameMap {
+	if x != nil {
+		return x.GameMap
 	}
 	return nil
 }
@@ -166,18 +229,27 @@ var File_protodef_game_map_proto protoreflect.FileDescriptor
 var file_protodef_game_map_proto_rawDesc = []byte{
 	0x0a, 0x17, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x64, 0x65, 0x66, 0x2f, 0x67, 0x61, 0x6d, 0x65, 0x5f,
 	0x6d, 0x61, 0x70, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x12, 0x08, 0x67, 0x61, 0x6d, 0x65, 0x5f,
-	0x6d, 0x61, 0x70, 0x22, 0x29, 0x0a, 0x0b, 0x46, 0x69, 0x65, 0x6c, 0x64, 0x53, 0x74, 0x61, 0x74,
-	0x75, 0x73, 0x12, 0x1a, 0x0a, 0x08, 0x6f, 0x63, 0x63, 0x75, 0x70, 0x69, 0x65, 0x64, 0x18, 0x01,
-	0x20, 0x01, 0x28, 0x08, 0x52, 0x08, 0x6f, 0x63, 0x63, 0x75, 0x70, 0x69, 0x65, 0x64, 0x22, 0x3a,
-	0x0a, 0x06, 0x58, 0x46, 0x69, 0x65, 0x6c, 0x64, 0x12, 0x30, 0x0a, 0x08, 0x78, 0x5f, 0x66, 0x69,
-	0x65, 0x6c, 0x64, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x15, 0x2e, 0x67, 0x61, 0x6d,
-	0x65, 0x5f, 0x6d, 0x61, 0x70, 0x2e, 0x46, 0x69, 0x65, 0x6c, 0x64, 0x53, 0x74, 0x61, 0x74, 0x75,
-	0x73, 0x52, 0x07, 0x78, 0x46, 0x69, 0x65, 0x6c, 0x64, 0x73, 0x22, 0x35, 0x0a, 0x06, 0x59, 0x46,
-	0x69, 0x65, 0x6c, 0x64, 0x12, 0x2b, 0x0a, 0x08, 0x79, 0x5f, 0x66, 0x69, 0x65, 0x6c, 0x64, 0x73,
-	0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x10, 0x2e, 0x67, 0x61, 0x6d, 0x65, 0x5f, 0x6d, 0x61,
-	0x70, 0x2e, 0x58, 0x46, 0x69, 0x65, 0x6c, 0x64, 0x52, 0x07, 0x79, 0x46, 0x69, 0x65, 0x6c, 0x64,
-	0x73, 0x42, 0x0c, 0x5a, 0x0a, 0x2e, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x64, 0x65, 0x66, 0x62,
-	0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x6d, 0x61, 0x70, 0x1a, 0x15, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x64, 0x65, 0x66, 0x2f, 0x73, 0x74,
+	0x61, 0x74, 0x75, 0x73, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x22, 0x38, 0x0a, 0x04, 0x43, 0x65,
+	0x6c, 0x6c, 0x12, 0x1a, 0x0a, 0x08, 0x6f, 0x63, 0x63, 0x75, 0x70, 0x69, 0x65, 0x64, 0x18, 0x01,
+	0x20, 0x01, 0x28, 0x08, 0x52, 0x08, 0x6f, 0x63, 0x63, 0x75, 0x70, 0x69, 0x65, 0x64, 0x12, 0x14,
+	0x0a, 0x05, 0x6f, 0x77, 0x6e, 0x65, 0x72, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x05, 0x6f,
+	0x77, 0x6e, 0x65, 0x72, 0x22, 0x2b, 0x0a, 0x03, 0x52, 0x6f, 0x77, 0x12, 0x24, 0x0a, 0x05, 0x63,
+	0x65, 0x6c, 0x6c, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x0e, 0x2e, 0x67, 0x61, 0x6d,
+	0x65, 0x5f, 0x6d, 0x61, 0x70, 0x2e, 0x43, 0x65, 0x6c, 0x6c, 0x52, 0x05, 0x63, 0x65, 0x6c, 0x6c,
+	0x73, 0x22, 0x2c, 0x0a, 0x07, 0x47, 0x61, 0x6d, 0x65, 0x4d, 0x61, 0x70, 0x12, 0x21, 0x0a, 0x04,
+	0x72, 0x6f, 0x77, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x0d, 0x2e, 0x67, 0x61, 0x6d,
+	0x65, 0x5f, 0x6d, 0x61, 0x70, 0x2e, 0x52, 0x6f, 0x77, 0x52, 0x04, 0x72, 0x6f, 0x77, 0x73, 0x22,
+	0x7c, 0x0a, 0x15, 0x55, 0x73, 0x65, 0x72, 0x50, 0x6f, 0x73, 0x69, 0x74, 0x69, 0x6f, 0x6e, 0x65,
+	0x64, 0x47, 0x61, 0x6d, 0x65, 0x4d, 0x61, 0x70, 0x12, 0x35, 0x0a, 0x0d, 0x75, 0x73, 0x65, 0x72,
+	0x5f, 0x70, 0x6f, 0x73, 0x69, 0x74, 0x69, 0x6f, 0x6e, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32,
+	0x10, 0x2e, 0x73, 0x74, 0x61, 0x74, 0x75, 0x73, 0x2e, 0x50, 0x6f, 0x73, 0x69, 0x74, 0x69, 0x6f,
+	0x6e, 0x52, 0x0c, 0x75, 0x73, 0x65, 0x72, 0x50, 0x6f, 0x73, 0x69, 0x74, 0x69, 0x6f, 0x6e, 0x12,
+	0x2c, 0x0a, 0x08, 0x67, 0x61, 0x6d, 0x65, 0x5f, 0x6d, 0x61, 0x70, 0x18, 0x02, 0x20, 0x01, 0x28,
+	0x0b, 0x32, 0x11, 0x2e, 0x67, 0x61, 0x6d, 0x65, 0x5f, 0x6d, 0x61, 0x70, 0x2e, 0x47, 0x61, 0x6d,
+	0x65, 0x4d, 0x61, 0x70, 0x52, 0x07, 0x67, 0x61, 0x6d, 0x65, 0x4d, 0x61, 0x70, 0x42, 0x0c, 0x5a,
+	0x0a, 0x2e, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x64, 0x65, 0x66, 0x50, 0x00, 0x62, 0x06, 0x70,
+	0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -192,20 +264,24 @@ func file_protodef_game_map_proto_rawDescGZIP() []byte {
 	return file_protodef_game_map_proto_rawDescData
 }
 
-var file_protodef_game_map_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_protodef_game_map_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_protodef_game_map_proto_goTypes = []interface{}{
-	(*FieldStatus)(nil), // 0: game_map.FieldStatus
-	(*XField)(nil),      // 1: game_map.XField
-	(*YField)(nil),      // 2: game_map.YField
+	(*Cell)(nil),                  // 0: game_map.Cell
+	(*Row)(nil),                   // 1: game_map.Row
+	(*GameMap)(nil),               // 2: game_map.GameMap
+	(*UserPositionedGameMap)(nil), // 3: game_map.UserPositionedGameMap
+	(*Position)(nil),              // 4: status.Position
 }
 var file_protodef_game_map_proto_depIdxs = []int32{
-	0, // 0: game_map.XField.x_fields:type_name -> game_map.FieldStatus
-	1, // 1: game_map.YField.y_fields:type_name -> game_map.XField
-	2, // [2:2] is the sub-list for method output_type
-	2, // [2:2] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	0, // 0: game_map.Row.cells:type_name -> game_map.Cell
+	1, // 1: game_map.GameMap.rows:type_name -> game_map.Row
+	4, // 2: game_map.UserPositionedGameMap.user_position:type_name -> status.Position
+	2, // 3: game_map.UserPositionedGameMap.game_map:type_name -> game_map.GameMap
+	4, // [4:4] is the sub-list for method output_type
+	4, // [4:4] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_protodef_game_map_proto_init() }
@@ -213,9 +289,10 @@ func file_protodef_game_map_proto_init() {
 	if File_protodef_game_map_proto != nil {
 		return
 	}
+	file_protodef_status_proto_init()
 	if !protoimpl.UnsafeEnabled {
 		file_protodef_game_map_proto_msgTypes[0].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*FieldStatus); i {
+			switch v := v.(*Cell); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -227,7 +304,7 @@ func file_protodef_game_map_proto_init() {
 			}
 		}
 		file_protodef_game_map_proto_msgTypes[1].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*XField); i {
+			switch v := v.(*Row); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -239,7 +316,19 @@ func file_protodef_game_map_proto_init() {
 			}
 		}
 		file_protodef_game_map_proto_msgTypes[2].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*YField); i {
+			switch v := v.(*GameMap); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_protodef_game_map_proto_msgTypes[3].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*UserPositionedGameMap); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -257,7 +346,7 @@ func file_protodef_game_map_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_protodef_game_map_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
