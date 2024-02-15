@@ -19,7 +19,7 @@ func LaunchWorkers(workerCount int) {
 
 	// main goroutine이 직접 요청을 받기전 WORKER_COUNT만큼 워커를 활성화
 	for workerId := 0; workerId < workerCount; workerId++ {
-	
+
 		statusChannel := make(chan *protodef.Status)
 		mutualTerminationSignal := make(chan bool)
 
@@ -28,11 +28,11 @@ func LaunchWorkers(workerCount int) {
 
 		conn := MakeUDPConn()
 		port := conn.LocalAddr().(*net.UDPAddr).Port
-		worker := workerPool.MakeWorker(statusChannel, port)
-		
+		worker := workerPool.MakeWorker(port)
+
 		worker.CollectedSendUserRelatedDataToClient = CollectToSendUserRelatedDataToClient(mutualTerminationSignal, time.Millisecond*100)
 		workerPool.Put(uuid.New().String(), worker)
-		
+
 		go ReceiveDataFromClient(conn, statusChannel, &initWorker, mutualTerminationSignal)
 		go ProcessIncoming(worker, &initWorker, statusChannel, workerPool, mutualTerminationSignal)
 	}

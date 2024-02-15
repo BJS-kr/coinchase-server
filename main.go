@@ -10,6 +10,7 @@ import (
 	"multiplayer_server/task"
 	"multiplayer_server/worker_pool"
 	"net"
+	"os"
 	"strconv"
 
 	"net/http"
@@ -21,6 +22,10 @@ const (
 )
 
 func main() {
+	var programLevel = new(slog.LevelVar) // Info by default
+	h := slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: programLevel})
+	slog.SetDefault(slog.New(h))
+	programLevel.Set(slog.LevelDebug)
 	// initializeWorkers
 	task.LaunchWorkers(WORKER_COUNT)
 

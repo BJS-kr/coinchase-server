@@ -48,7 +48,6 @@ func ReceiveDataFromClient(conn *net.UDPConn, statusSender chan<- *protodef.Stat
 			desErr := proto.Unmarshal(buffer[:amount], &status)
 
 			if desErr != nil {
-
 				log.Fatal(err.Error())
 			}
 			fmt.Println("data received", status)

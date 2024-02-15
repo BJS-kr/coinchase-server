@@ -35,7 +35,7 @@ type Worker struct {
 	StatusReceiver                       <-chan *protodef.Status
 	HealthChecker                        chan bool
 	ForceExitSignal                      chan bool
-	StopClientSendSignal				 chan bool
+	StopClientSendSignal                 chan bool
 	CollectedSendUserRelatedDataToClient func(clientID string, clientIP *net.IP, clientPort int, stopClientSendSignal chan bool)
 }
 
@@ -129,13 +129,12 @@ func (wp *WorkerPool) GetWorkerById(workerId string) (*Worker, bool) {
 	return worker, ok
 }
 
-func (wp *WorkerPool) MakeWorker(statusReceiver <-chan *protodef.Status, port int) *Worker {
+func (wp *WorkerPool) MakeWorker(port int) *Worker {
 	return &Worker{
-		StatusReceiver:  statusReceiver,
-		Port:            port,
-		Status:          IDLE,
-		HealthChecker:   make(chan bool),
-		ForceExitSignal: make(chan bool),
+		Port:                 port,
+		Status:               IDLE,
+		HealthChecker:        make(chan bool),
+		ForceExitSignal:      make(chan bool),
 		StopClientSendSignal: make(chan bool),
 		//UserID와 ClientIP와 ClientPort는 추후 워커가 유저에게 할당 될 때 설정된다.
 	}

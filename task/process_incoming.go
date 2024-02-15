@@ -17,16 +17,35 @@ func ProcessIncoming(worker *worker_pool.Worker, initWorker *sync.WaitGroup, sta
 	for {
 		select {
 		case status := <-statusReceiver:
-			{
-				game_map.GameMap.UpdateUserPosition(status)
+			items := make([]game_map.Item, 0)
 
+			for _, item := range status.Items {
+				items = append(items, game_map.Item{
+					Id:     item.Id,
+					Name:   item.Name,
+					Amount: item.Amount,
+				})
 			}
+
+			safeStatus := game_map.Status{
+				Id: status.Id,
+				CurrentPosition: game_map.Position{
+					X: status.CurrentPosition.X,
+					Y: status.CurrentPosition.Y,
+				},
+				Items: items,
+			}
+
+			game_map.GameMap.UpdateUserPosition(&safeStatus)
+			// fmt.Println(status)
+
 		case <-worker.ForceExitSignal:
 			// panic하는 이유는 mutual termination을 실행해야하기 때문이다.
 			// 이에 따라 자동으로 UDP Receiver도 종료될 것이다.
 			panic("forced exit occurred by signal")
 
 		case <-worker.HealthChecker:
+			println("health checking..")
 			worker.HealthChecker <- true
 
 		case <-mutualTerminationSignal:
