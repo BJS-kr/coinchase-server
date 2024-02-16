@@ -6,7 +6,6 @@ import (
 	"log"
 	"log/slog"
 	"multiplayer_server/game_map"
-	"multiplayer_server/protodef"
 	"multiplayer_server/task"
 	"multiplayer_server/worker_pool"
 	"net"
@@ -16,10 +15,8 @@ import (
 	"net/http"
 )
 
-const (
-	WORKER_COUNT int = 10
-	MAP_SIZE     int = 10
-)
+const WORKER_COUNT int = 10
+
 
 func main() {
 	var programLevel = new(slog.LevelVar) // Info by default
@@ -36,19 +33,19 @@ func main() {
 	// worker health check
 	go task.HealthCheckAndRevive(10)
 
-	game_map.GameMap.Map = &protodef.GameMap{
-		Rows: make([]*protodef.Row, 0, MAP_SIZE),
+	game_map.GameMap.Map = &game_map.Map{
+		Rows: make([]*game_map.Row, game_map.MAP_SIZE),
 	}
 
-	for _, row := range game_map.GameMap.Map.Rows {
-		game_map.GameMap.Map.Rows = append(game_map.GameMap.Map.Rows, &protodef.Row{})
-		row.Cells = make([]*protodef.Cell, MAP_SIZE)
-		for i := 0; i < MAP_SIZE; i++ {
-			row.Cells[i] = &protodef.Cell{}
+	for i := 0; i<int(game_map.MAP_SIZE); i++ {
+		game_map.GameMap.Map.Rows[i] = &game_map.Row{
+			Cells:  make([]*game_map.Cell, game_map.MAP_SIZE),
+		}
+		for j := 0; j <int(game_map.MAP_SIZE); j++ {
+			game_map.GameMap.Map.Rows[i].Cells[j] = &game_map.Cell{}
 		}
 	}
-
-	game_map.UserPositions = make(map[string]*protodef.Position)
+	game_map.UserPositions.UserPositions = make(map[string]*game_map.Position)
 
 	http.HandleFunc("GET /get-worker-port/{userId}/{clientIP}/{clientPort}", func(w http.ResponseWriter, r *http.Request) {
 		userId := r.PathValue("userId")

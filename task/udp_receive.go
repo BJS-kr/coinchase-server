@@ -1,7 +1,6 @@
 package task
 
 import (
-	"fmt"
 	"log"
 	"multiplayer_server/protodef"
 
@@ -39,8 +38,8 @@ func ReceiveDataFromClient(conn *net.UDPConn, statusSender chan<- *protodef.Stat
 			// 그러나 일반적으로 2의 제곱수를 할당하는 것이 관례이므로 576보다 큰 최소 2의 제곱수 1024로 buffer를 만든다.
 			buffer := make([]byte, 1024)
 			amount, _, err := conn.ReadFromUDP(buffer)
+			
 			if err != nil {
-
 				log.Fatal(err.Error())
 			}
 
@@ -50,7 +49,7 @@ func ReceiveDataFromClient(conn *net.UDPConn, statusSender chan<- *protodef.Stat
 			if desErr != nil {
 				log.Fatal(err.Error())
 			}
-			fmt.Println("data received", status)
+			
 			statusSender <- &status
 		}
 

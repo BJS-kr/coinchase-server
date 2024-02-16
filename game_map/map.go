@@ -1,19 +1,32 @@
 package game_map
 
 import (
-	"multiplayer_server/protodef"
 	"sync"
 	"time"
 )
 
+const MAP_SIZE  int32 = 100
+type Cell struct {
+	Occupied bool
+	Owner string
+}
+type Row struct {
+	Cells []*Cell
+}
+type Map struct {
+	Rows []*Row
+}
 type RWMutexGameMap struct {
-	Map   *protodef.GameMap
+	Map   *Map
 	RWMtx sync.RWMutex
+}
+type  RWMutexUserPositions struct {
+	mtx sync.RWMutex
+	UserPositions  map[string]*Position
 }
 
 var GameMap RWMutexGameMap
-var UserPositions map[string]*protodef.Position
-
+var UserPositions RWMutexUserPositions
 // update와 read가 한 곳에서 일어나면 사실상 read가 wlock의 통제를 받게 되므로 Mutex를 사용하는 의미가 없다.
 // 그러므로 현재 맵 상태를 전달하는 것과 맵의 상태를 업데이트하는 연산은 별개로 이뤄져야한다.
 // 업데이트는 데이터를 전달한 의무가 없으므로 반환 값이 없다.
@@ -37,37 +50,60 @@ type Status struct {
 	SentAt          time.Time
 }
 
-func (m *RWMutexGameMap) UpdateUserPosition(userStatus *Status) {
-	if m.isDelayedOver(userStatus, 40) ||
-		m.isOutOfRange(userStatus) ||
-		m.isOccupied(userStatus) {
+func (mup *RWMutexUserPositions)GetUserPosition(userId string) (*Position, bool){
+	mup.mtx.RLock()
+	defer mup.mtx.RUnlock()
 
-		return
+	position, ok := mup.UserPositions[userId]
+
+	return position, ok
+}
+
+func (mup *RWMutexUserPositions)SetUserPosition(userId string, X, Y int32) {
+	mup.mtx.Lock()
+	defer mup.mtx.Unlock()
+
+	mup.UserPositions[userId] = &Position{
+		X: X,
+		Y: Y,
 	}
+}
+
+func (m *RWMutexGameMap) UpdateUserPosition(userStatus *Status) {
+	// if m.isDelayedOver(userStatus, 40) ||
+	// 	m.isOutOfRange(userStatus) ||
+	// 	m.isOccupied(userStatus) {
+
+	// 	return
+	// }
 
 	m.RWMtx.Lock()
 	defer m.RWMtx.Unlock()
 
-	UserPositions[userStatus.Id] = &protodef.Position{
-		X: userStatus.CurrentPosition.X,
-		Y: userStatus.CurrentPosition.Y,
+	currentPosition, exists := UserPositions.GetUserPosition(userStatus.Id)
+
+	if exists {
+		m.Map.Rows[currentPosition.X].Cells[currentPosition.Y].Occupied = false
+		m.Map.Rows[currentPosition.X].Cells[currentPosition.Y].Owner = ""
 	}
+
+	UserPositions.SetUserPosition(userStatus.Id, userStatus.CurrentPosition.X, userStatus.CurrentPosition.Y)
+
 	m.Map.Rows[userStatus.CurrentPosition.X].Cells[userStatus.CurrentPosition.Y].Occupied = true
 	m.Map.Rows[userStatus.CurrentPosition.X].Cells[userStatus.CurrentPosition.Y].Owner = userStatus.Id
 }
 
-func (m *RWMutexGameMap) GetSharedMap() *protodef.GameMap {
+func (m *RWMutexGameMap) GetSharedMap() *Map {
 	m.RWMtx.RLock()
 	defer m.RWMtx.RUnlock()
 
 	// RLock은 여러 goroutine이 획득할 수 있으나, WLock(RWMutex.Lock)은 RLock을 잠그므로 클라이언트가 언제나 업데이트된 상태의 맵을 받을 수 있다.
-
 	return m.Map
 }
 
 func (m *RWMutexGameMap) isOutOfRange(userStatus *Status) bool {
-	return userStatus.CurrentPosition.X > 99 ||
-		userStatus.CurrentPosition.Y > 99 ||
+	return userStatus.CurrentPosition.X > MAP_SIZE -1 ||
+		userStatus.CurrentPosition.Y > MAP_SIZE - 1 ||
 		userStatus.CurrentPosition.X < 0 ||
 		userStatus.CurrentPosition.Y < 0
 }

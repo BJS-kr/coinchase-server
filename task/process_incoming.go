@@ -37,7 +37,7 @@ func ProcessIncoming(worker *worker_pool.Worker, initWorker *sync.WaitGroup, sta
 			}
 
 			game_map.GameMap.UpdateUserPosition(&safeStatus)
-			// fmt.Println(status)
+	
 
 		case <-worker.ForceExitSignal:
 			// panic하는 이유는 mutual termination을 실행해야하기 때문이다.
@@ -45,7 +45,6 @@ func ProcessIncoming(worker *worker_pool.Worker, initWorker *sync.WaitGroup, sta
 			panic("forced exit occurred by signal")
 
 		case <-worker.HealthChecker:
-			println("health checking..")
 			worker.HealthChecker <- true
 
 		case <-mutualTerminationSignal:

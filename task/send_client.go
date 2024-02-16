@@ -36,23 +36,52 @@ func CollectToSendUserRelatedDataToClient(mutualTerminationSignal chan bool, int
 		for {
 			select {
 			case <-ticker.C:
-				{
 					//일단 POC해보기 위해 전체 맵 데이터보냄
 					sharedMap := game_map.GameMap.GetSharedMap()
-					userPosition := game_map.UserPositions[clientId]
-					userPositionedMap := protodef.UserPositionedGameMap{
-						UserPosition: userPosition,
-						GameMap:      sharedMap,
+					userPosition, ok := game_map.UserPositions.GetUserPosition(clientId)
+					
+					if !ok {
+						continue
 					}
-					data, err := proto.Marshal(&userPositionedMap)
+					protoRows := make([]*protodef.Row, 0)
+					for _, row := range sharedMap.Rows {
+						protoRow := protodef.Row{
+							Cells: make([]*protodef.Cell, 0),
+						}
+						for _, cell := range row.Cells {
+							protoCell := protodef.Cell{
+								Occupied: cell.Occupied,
+								Owner: cell.Owner,
+							}
+							protoRow.Cells = append(protoRow.Cells, &protoCell)
+						}
+						protoRows = append(protoRows, &protoRow)
+					}
 
+					protoGameMap := &protodef.GameMap{
+						Rows:protoRows,
+					}
+					protoUserPosition :=  &protodef.Position{
+						X: userPosition.X,
+						Y: userPosition.Y,
+					}
+					userPositionedMap := &protodef.UserPositionedGameMap{
+						UserPosition:protoUserPosition,
+						GameMap: protoGameMap,
+					}
+					data, err := proto.Marshal(userPositionedMap)
 					if err != nil {
 						slog.Debug(err.Error())
 						panic(err)
 					}
-
-					client.Write(data)
-				}
+					
+					_, err = client.Write(data)
+					if err != nil {
+						fmt.Println(len(data))
+						slog.Debug(err.Error())
+						panic(err)
+					}
+				
 			case <-mutualTerminationSignal:
 				return
 			// stopClientSendSignal은 client send가 worker가 생성되고 난 뒤, 클라이언트에서 정보를 받으면 내부적으로 실행되기 때문에, 모든 관계를 죽이는(mutual termination)이 아닌
