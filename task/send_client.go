@@ -2,6 +2,7 @@ package task
 
 import (
 	"fmt"
+	"log"
 	"log/slog"
 	"multiplayer_server/game_map"
 	"multiplayer_server/protodef"
@@ -19,8 +20,7 @@ func CollectToSendUserRelatedDataToClient(mutualTerminationSignal chan bool, int
 		clientAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", clientIP.String(), clientPort))
 
 		if err != nil {
-			slog.Debug(err.Error())
-			panic(err)
+			log.Fatal(err.Error())
 		}
 
 		client, err := net.DialUDP("udp", nil, clientAddr)
@@ -36,52 +36,51 @@ func CollectToSendUserRelatedDataToClient(mutualTerminationSignal chan bool, int
 		for {
 			select {
 			case <-ticker.C:
-					//일단 POC해보기 위해 전체 맵 데이터보냄
-					sharedMap := game_map.GameMap.GetSharedMap()
-					userPosition, ok := game_map.UserPositions.GetUserPosition(clientId)
-					
-					if !ok {
-						continue
-					}
-					protoRows := make([]*protodef.Row, 0)
-					for _, row := range sharedMap.Rows {
-						protoRow := protodef.Row{
-							Cells: make([]*protodef.Cell, 0),
-						}
-						for _, cell := range row.Cells {
-							protoCell := protodef.Cell{
-								Occupied: cell.Occupied,
-								Owner: cell.Owner,
-							}
-							protoRow.Cells = append(protoRow.Cells, &protoCell)
-						}
-						protoRows = append(protoRows, &protoRow)
-					}
+				//일단 POC해보기 위해 전체 맵 데이터보냄
+				userPosition, ok := game_map.UserPositions.GetUserPosition(clientId)
+				if !ok {
+					continue
+				}
+				relatedPositions := game_map.GameMap.GetRelatedPositions(userPosition)
+				protoUserPosition := &protodef.Position{
+					X: userPosition.X,
+					Y: userPosition.Y,
+				}
 
-					protoGameMap := &protodef.GameMap{
-						Rows:protoRows,
+				protoRelatedPositions := make([]*protodef.RelatedPosition, 0)
+				for _, relatedPosition := range relatedPositions {
+					protoCell := &protodef.Cell{
+						Occupied: relatedPosition.Cell.Occupied,
+						Owner:    relatedPosition.Cell.Owner,
 					}
-					protoUserPosition :=  &protodef.Position{
-						X: userPosition.X,
-						Y: userPosition.Y,
+					protoPosition := &protodef.Position{
+						X: relatedPosition.Position.X,
+						Y: relatedPosition.Position.Y,
 					}
-					userPositionedMap := &protodef.UserPositionedGameMap{
-						UserPosition:protoUserPosition,
-						GameMap: protoGameMap,
-					}
-					data, err := proto.Marshal(userPositionedMap)
-					if err != nil {
-						slog.Debug(err.Error())
-						panic(err)
-					}
-					
-					_, err = client.Write(data)
-					if err != nil {
-						fmt.Println(len(data))
-						slog.Debug(err.Error())
-						panic(err)
-					}
-				
+					protoRelatedPositions = append(protoRelatedPositions, &protodef.RelatedPosition{
+						Cell:     protoCell,
+						Position: protoPosition,
+					})
+				}
+
+				protoUserRelatedPositions := &protodef.RelatedPositions{
+					UserPosition:     protoUserPosition,
+					RelatedPositions: protoRelatedPositions,
+				}
+
+				marshaledProtoUserRelatedPositions, err := proto.Marshal(protoUserRelatedPositions)
+
+				if err != nil {
+					log.Fatal(err.Error())
+				}
+
+				fmt.Println("compressed length", len(marshaledProtoUserRelatedPositions))
+
+				_, err = client.Write(marshaledProtoUserRelatedPositions)
+				if err != nil {
+					log.Fatal(err.Error())
+				}
+
 			case <-mutualTerminationSignal:
 				return
 			// stopClientSendSignal은 client send가 worker가 생성되고 난 뒤, 클라이언트에서 정보를 받으면 내부적으로 실행되기 때문에, 모든 관계를 죽이는(mutual termination)이 아닌

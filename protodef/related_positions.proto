@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package related_positions;
+
+import public "protodef/status.proto";
+import public "protodef/game_map.proto";
+
+option go_package = "./protodef";
+
+message RelatedPosition {
+  status.Position position =2;
+  game_map.Cell cell = 1;
+}
+
+message RelatedPositions {
+  repeated RelatedPosition related_positions = 1;
+  status.Position user_position = 2;
+}

@@ -5,10 +5,11 @@ import (
 	"time"
 )
 
-const MAP_SIZE  int32 = 100
+const MAP_SIZE int32 = 20
+
 type Cell struct {
 	Occupied bool
-	Owner string
+	Owner    string
 }
 type Row struct {
 	Cells []*Cell
@@ -20,13 +21,19 @@ type RWMutexGameMap struct {
 	Map   *Map
 	RWMtx sync.RWMutex
 }
-type  RWMutexUserPositions struct {
-	mtx sync.RWMutex
-	UserPositions  map[string]*Position
+type RWMutexUserPositions struct {
+	mtx           sync.RWMutex
+	UserPositions map[string]*Position
+}
+
+type RelatedPosition struct {
+	Position *Position
+	Cell     *Cell
 }
 
 var GameMap RWMutexGameMap
 var UserPositions RWMutexUserPositions
+
 // update와 read가 한 곳에서 일어나면 사실상 read가 wlock의 통제를 받게 되므로 Mutex를 사용하는 의미가 없다.
 // 그러므로 현재 맵 상태를 전달하는 것과 맵의 상태를 업데이트하는 연산은 별개로 이뤄져야한다.
 // 업데이트는 데이터를 전달한 의무가 없으므로 반환 값이 없다.
@@ -50,7 +57,7 @@ type Status struct {
 	SentAt          time.Time
 }
 
-func (mup *RWMutexUserPositions)GetUserPosition(userId string) (*Position, bool){
+func (mup *RWMutexUserPositions) GetUserPosition(userId string) (*Position, bool) {
 	mup.mtx.RLock()
 	defer mup.mtx.RUnlock()
 
@@ -59,7 +66,7 @@ func (mup *RWMutexUserPositions)GetUserPosition(userId string) (*Position, bool)
 	return position, ok
 }
 
-func (mup *RWMutexUserPositions)SetUserPosition(userId string, X, Y int32) {
+func (mup *RWMutexUserPositions) SetUserPosition(userId string, X, Y int32) {
 	mup.mtx.Lock()
 	defer mup.mtx.Unlock()
 
@@ -70,12 +77,11 @@ func (mup *RWMutexUserPositions)SetUserPosition(userId string, X, Y int32) {
 }
 
 func (m *RWMutexGameMap) UpdateUserPosition(userStatus *Status) {
-	// if m.isDelayedOver(userStatus, 40) ||
-	// 	m.isOutOfRange(userStatus) ||
-	// 	m.isOccupied(userStatus) {
+	if m.isOutOfRange(&userStatus.CurrentPosition) ||
+		m.isOccupied(userStatus) {
 
-	// 	return
-	// }
+		return
+	}
 
 	m.RWMtx.Lock()
 	defer m.RWMtx.Unlock()
@@ -83,14 +89,14 @@ func (m *RWMutexGameMap) UpdateUserPosition(userStatus *Status) {
 	currentPosition, exists := UserPositions.GetUserPosition(userStatus.Id)
 
 	if exists {
-		m.Map.Rows[currentPosition.X].Cells[currentPosition.Y].Occupied = false
-		m.Map.Rows[currentPosition.X].Cells[currentPosition.Y].Owner = ""
+		m.Map.Rows[currentPosition.Y].Cells[currentPosition.X].Occupied = false
+		m.Map.Rows[currentPosition.Y].Cells[currentPosition.X].Owner = ""
 	}
 
 	UserPositions.SetUserPosition(userStatus.Id, userStatus.CurrentPosition.X, userStatus.CurrentPosition.Y)
 
-	m.Map.Rows[userStatus.CurrentPosition.X].Cells[userStatus.CurrentPosition.Y].Occupied = true
-	m.Map.Rows[userStatus.CurrentPosition.X].Cells[userStatus.CurrentPosition.Y].Owner = userStatus.Id
+	m.Map.Rows[userStatus.CurrentPosition.Y].Cells[userStatus.CurrentPosition.X].Occupied = true
+	m.Map.Rows[userStatus.CurrentPosition.Y].Cells[userStatus.CurrentPosition.X].Owner = userStatus.Id
 }
 
 func (m *RWMutexGameMap) GetSharedMap() *Map {
@@ -101,11 +107,62 @@ func (m *RWMutexGameMap) GetSharedMap() *Map {
 	return m.Map
 }
 
-func (m *RWMutexGameMap) isOutOfRange(userStatus *Status) bool {
-	return userStatus.CurrentPosition.X > MAP_SIZE -1 ||
-		userStatus.CurrentPosition.Y > MAP_SIZE - 1 ||
-		userStatus.CurrentPosition.X < 0 ||
-		userStatus.CurrentPosition.Y < 0
+func (m *RWMutexGameMap) GetRelatedPositions(userPosition *Position) []*RelatedPosition {
+	surroundedPositions := [8]Position{
+		{ // left top
+			X: userPosition.X - 1,
+			Y: userPosition.Y - 1,
+		},
+		{ // left
+			X: userPosition.X - 1,
+			Y: userPosition.Y,
+		},
+		{ // left bottom
+			X: userPosition.X - 1,
+			Y: userPosition.Y + 1,
+		},
+		{ // top
+			X: userPosition.X,
+			Y: userPosition.Y - 1,
+		},
+		{ // bottom
+			X: userPosition.X,
+			Y: userPosition.Y + 1,
+		},
+		{ // right top
+			X: userPosition.X + 1,
+			Y: userPosition.Y - 1,
+		},
+		{ // right
+			X: userPosition.X + 1,
+			Y: userPosition.Y,
+		},
+		{ // right bottom
+			X: userPosition.X + 1,
+			Y: userPosition.Y + 1,
+		},
+	}
+
+	relatedPositions := make([]*RelatedPosition, 0)
+	for _, surroundedPosition := range surroundedPositions {
+		if m.isOutOfRange(&surroundedPosition) {
+			continue
+		}
+		relatedPosition := RelatedPosition{
+			Position: &surroundedPosition,
+			Cell:     m.Map.Rows[surroundedPosition.Y].Cells[surroundedPosition.X],
+		}
+		relatedPositions = append(relatedPositions, &relatedPosition)
+	}
+
+	return relatedPositions
+}
+
+func (m *RWMutexGameMap) isOutOfRange(position *Position) bool {
+	return position.X > MAP_SIZE-1 ||
+		position.Y > MAP_SIZE-1 ||
+		position.X < 0 ||
+		position.Y < 0
 }
 
 func (m *RWMutexGameMap) isDelayedOver(userStatus *Status, ms int64) bool {
