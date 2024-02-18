@@ -17,9 +17,8 @@ import (
 
 const WORKER_COUNT int = 10
 
-
 func main() {
-	var programLevel = new(slog.LevelVar) // Info by default
+	var programLevel = new(slog.LevelVar)
 	h := slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: programLevel})
 	slog.SetDefault(slog.New(h))
 	programLevel.Set(slog.LevelDebug)
@@ -37,11 +36,11 @@ func main() {
 		Rows: make([]*game_map.Row, game_map.MAP_SIZE),
 	}
 
-	for i := 0; i<int(game_map.MAP_SIZE); i++ {
+	for i := 0; i < int(game_map.MAP_SIZE); i++ {
 		game_map.GameMap.Map.Rows[i] = &game_map.Row{
-			Cells:  make([]*game_map.Cell, game_map.MAP_SIZE),
+			Cells: make([]*game_map.Cell, game_map.MAP_SIZE),
 		}
-		for j := 0; j <int(game_map.MAP_SIZE); j++ {
+		for j := 0; j < int(game_map.MAP_SIZE); j++ {
 			game_map.GameMap.Map.Rows[i].Cells[j] = &game_map.Cell{}
 		}
 	}

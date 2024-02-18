@@ -36,11 +36,12 @@ func CollectToSendUserRelatedDataToClient(mutualTerminationSignal chan bool, int
 		for {
 			select {
 			case <-ticker.C:
-				//일단 POC해보기 위해 전체 맵 데이터보냄
 				userPosition, ok := game_map.UserPositions.GetUserPosition(clientId)
+
 				if !ok {
 					continue
 				}
+
 				relatedPositions := game_map.GameMap.GetRelatedPositions(userPosition)
 				protoUserPosition := &protodef.Position{
 					X: userPosition.X,
