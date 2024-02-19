@@ -8,6 +8,7 @@ option go_package = "./protodef";
 message Cell {
     bool occupied = 1;
     string owner = 2;
+    int32 kind = 3;
 }
 message Row {
     repeated Cell cells = 1;

@@ -1,15 +1,24 @@
 package game_map
 
 import (
+	"math/rand/v2"
 	"sync"
 	"time"
 )
 
 const MAP_SIZE int32 = 20
+type Kind int32
+const (
+	UNKNOWN = iota
+	USER
+	COIN
+	GROUND
+)
 
 type Cell struct {
 	Occupied bool
 	Owner    string
+	Kind 	 Kind
 }
 type Row struct {
 	Cells []*Cell
@@ -19,6 +28,7 @@ type Map struct {
 }
 type RWMutexGameMap struct {
 	Map   *Map
+	Coins []*Position
 	RWMtx sync.RWMutex
 }
 type RWMutexUserPositions struct {
@@ -78,8 +88,8 @@ func (mup *RWMutexUserPositions) SetUserPosition(userId string, X, Y int32) {
 
 func (m *RWMutexGameMap) UpdateUserPosition(userStatus *Status) {
 	if m.isOutOfRange(&userStatus.CurrentPosition) ||
-		m.isOccupied(userStatus) {
-
+		m.isOccupied(&userStatus.CurrentPosition) {
+			
 		return
 	}
 
@@ -89,14 +99,22 @@ func (m *RWMutexGameMap) UpdateUserPosition(userStatus *Status) {
 	currentPosition, exists := UserPositions.GetUserPosition(userStatus.Id)
 
 	if exists {
-		m.Map.Rows[currentPosition.Y].Cells[currentPosition.X].Occupied = false
-		m.Map.Rows[currentPosition.Y].Cells[currentPosition.X].Owner = ""
+		m.Map.Rows[currentPosition.Y].Cells[currentPosition.X]= &Cell{
+			Occupied: false,
+			Owner: "",
+			Kind: GROUND,
+		}
+		
 	}
 
 	UserPositions.SetUserPosition(userStatus.Id, userStatus.CurrentPosition.X, userStatus.CurrentPosition.Y)
 
-	m.Map.Rows[userStatus.CurrentPosition.Y].Cells[userStatus.CurrentPosition.X].Occupied = true
-	m.Map.Rows[userStatus.CurrentPosition.Y].Cells[userStatus.CurrentPosition.X].Owner = userStatus.Id
+	m.Map.Rows[userStatus.CurrentPosition.Y].Cells[userStatus.CurrentPosition.X] = &Cell{
+		Occupied: true,
+		Owner: userStatus.Id,
+		Kind: USER,
+	}
+	
 }
 
 func (m *RWMutexGameMap) GetSharedMap() *Map {
@@ -108,40 +126,20 @@ func (m *RWMutexGameMap) GetSharedMap() *Map {
 }
 
 func (m *RWMutexGameMap) GetRelatedPositions(userPosition *Position) []*RelatedPosition {
-	surroundedPositions := [8]Position{
-		{ // left top
-			X: userPosition.X - 1,
-			Y: userPosition.Y - 1,
-		},
-		{ // left
-			X: userPosition.X - 1,
-			Y: userPosition.Y,
-		},
-		{ // left bottom
-			X: userPosition.X - 1,
-			Y: userPosition.Y + 1,
-		},
-		{ // top
-			X: userPosition.X,
-			Y: userPosition.Y - 1,
-		},
-		{ // bottom
-			X: userPosition.X,
-			Y: userPosition.Y + 1,
-		},
-		{ // right top
-			X: userPosition.X + 1,
-			Y: userPosition.Y - 1,
-		},
-		{ // right
-			X: userPosition.X + 1,
-			Y: userPosition.Y,
-		},
-		{ // right bottom
-			X: userPosition.X + 1,
-			Y: userPosition.Y + 1,
-		},
+	surroundedPositions := make([]Position, 0)
+	var x int32
+	var y int32
+	abs :=int32(3)
+	for x = -abs; x<=abs; x++ {
+		for y =-abs; y<=abs; y++ {
+			if x == 0 && y == 0 { continue } // 자신의 위치임
+			surroundedPositions = append(surroundedPositions, Position{
+				X: userPosition.X + x,
+				Y: userPosition.Y + y,
+			})
+		}
 	}
+
 
 	relatedPositions := make([]*RelatedPosition, 0)
 	for _, surroundedPosition := range surroundedPositions {
@@ -165,10 +163,64 @@ func (m *RWMutexGameMap) isOutOfRange(position *Position) bool {
 		position.Y < 0
 }
 
-func (m *RWMutexGameMap) isDelayedOver(userStatus *Status, ms int64) bool {
-	return time.Now().UnixMilli()-userStatus.SentAt.UnixMilli() > ms
+func (m *RWMutexGameMap) isOccupied(position *Position) bool {
+	return m.Map.Rows[position.Y].Cells[position.X].Occupied
 }
 
-func (m *RWMutexGameMap) isOccupied(userStatus *Status) bool {
-	return m.Map.Rows[userStatus.CurrentPosition.X].Cells[userStatus.CurrentPosition.Y].Occupied
+func (m *RWMutexGameMap) InitializeCoins() {
+	m.Coins  = make([]*Position, 0)
+	for i:=0; i<10; i++ { // 겹칠 수 있으니 코인의 갯수도 랜덤
+		x, y := rand.Int32N(MAP_SIZE), rand.Int32N(MAP_SIZE)
+		if !m.Map.Rows[y].Cells[x].Occupied	{
+			m.Map.Rows[y].Cells[x] = &Cell{
+				Occupied: true,
+				Owner: "system",
+				Kind: COIN,
+			}
+			m.Coins = append(m.Coins, &Position{
+				X:x,
+				Y:y,
+			})
+		}
+	}
+}
+
+func (m *RWMutexGameMap) MoveCoinsRandomly() {
+	ticker := time.NewTicker(time.Second)
+
+	for _ = range ticker.C {
+		func () {
+			m.RWMtx.Lock()
+			defer m.RWMtx.Unlock()
+
+			for i, coinPosition := range m.Coins {
+				newPos := &Position{
+					X: coinPosition.X + generateRandomDirection(),
+					Y: coinPosition.Y + generateRandomDirection(),
+				}
+		
+				if m.isOutOfRange(newPos) || m.isOccupied(newPos)  { continue }
+		
+				m.Map.Rows[coinPosition.Y].Cells[coinPosition.X] = &Cell{
+					Occupied: false,
+					Owner: "",
+					Kind: GROUND,
+				}
+		
+				m.Map.Rows[newPos.Y].Cells[newPos.X] = &Cell{
+					Occupied: true,
+					Owner: "system",
+					Kind: COIN,
+				}
+			
+				m.Coins[i] = newPos
+			}
+		}()
+	}
+}
+
+func generateRandomDirection() int32 {
+	if rand.Int32N(2) == 0 { return -1 }
+	
+	return 1
 }

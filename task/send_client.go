@@ -53,6 +53,7 @@ func CollectToSendUserRelatedDataToClient(mutualTerminationSignal chan bool, int
 					protoCell := &protodef.Cell{
 						Occupied: relatedPosition.Cell.Occupied,
 						Owner:    relatedPosition.Cell.Owner,
+						Kind:  int32(relatedPosition.Cell.Kind),
 					}
 					protoPosition := &protodef.Position{
 						X: relatedPosition.Position.X,
@@ -74,8 +75,6 @@ func CollectToSendUserRelatedDataToClient(mutualTerminationSignal chan bool, int
 				if err != nil {
 					log.Fatal(err.Error())
 				}
-
-				fmt.Println("compressed length", len(marshaledProtoUserRelatedPositions))
 
 				_, err = client.Write(marshaledProtoUserRelatedPositions)
 				if err != nil {

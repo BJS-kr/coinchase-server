@@ -41,9 +41,13 @@ func main() {
 			Cells: make([]*game_map.Cell, game_map.MAP_SIZE),
 		}
 		for j := 0; j < int(game_map.MAP_SIZE); j++ {
-			game_map.GameMap.Map.Rows[i].Cells[j] = &game_map.Cell{}
+			game_map.GameMap.Map.Rows[i].Cells[j] = &game_map.Cell{
+				Kind: game_map.GROUND,
+			}
 		}
 	}
+	game_map.GameMap.InitializeCoins()
+	go game_map.GameMap.MoveCoinsRandomly()
 	game_map.UserPositions.UserPositions = make(map[string]*game_map.Position)
 
 	http.HandleFunc("GET /get-worker-port/{userId}/{clientIP}/{clientPort}", func(w http.ResponseWriter, r *http.Request) {
