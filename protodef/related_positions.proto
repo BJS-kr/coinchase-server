@@ -15,4 +15,5 @@ message RelatedPosition {
 message RelatedPositions {
   repeated RelatedPosition related_positions = 1;
   status.Position user_position = 2;
+  map<string, int32> scoreboard = 3;
 }

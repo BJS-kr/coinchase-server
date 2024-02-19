@@ -32,7 +32,7 @@ type Map struct {
 type RWMutexGameMap struct {
 	Map        *Map
 	Coins      []*Position
-	ScoreBoard map[string]int
+	Scoreboard map[string]int32
 	RWMtx      sync.RWMutex
 }
 type RWMutexUserPositions struct {
@@ -111,7 +111,7 @@ func (m *RWMutexGameMap) UpdateUserPosition(userStatus *Status) {
 			m.InitializeCoins()
 		}
 
-		m.ScoreBoard[userStatus.Id] += 1
+		m.Scoreboard[userStatus.Id] += 1
 	}
 	// 이 currentPosition은 서버에 저장된 user의 위치 정보로, userStatus.CurrentPosition과는 다른 값이다.
 	currentPosition, exists := UserPositions.GetUserPosition(userStatus.Id)
@@ -143,13 +143,11 @@ func (m *RWMutexGameMap) GetSharedMap() *Map {
 	return m.Map
 }
 
-func (m *RWMutexGameMap) GetRelatedPositions(userPosition *Position) []*RelatedPosition {
+func (m *RWMutexGameMap) GetRelatedPositions(userPosition *Position, visibleRange int32) []*RelatedPosition {
 	surroundedPositions := make([]Position, 0)
-	var x int32
-	var y int32
-	abs := int32(3)
-	for x = -abs; x <= abs; x++ {
-		for y = -abs; y <= abs; y++ {
+
+	for x := -visibleRange; x <= visibleRange; x++ {
+		for y := -visibleRange; y <= visibleRange; y++ {
 			if x == 0 && y == 0 {
 				continue
 			} // 자신의 위치임
@@ -205,7 +203,7 @@ func (m *RWMutexGameMap) InitializeCoins() {
 }
 
 func (m *RWMutexGameMap) MoveCoinsRandomly() {
-	ticker := time.NewTicker(time.Second)
+	ticker := time.NewTicker(time.Millisecond * 500)
 
 	for _ = range ticker.C {
 		func() {

@@ -42,7 +42,7 @@ func CollectToSendUserRelatedDataToClient(mutualTerminationSignal chan bool, int
 					continue
 				}
 
-				relatedPositions := game_map.GameMap.GetRelatedPositions(userPosition)
+				relatedPositions := game_map.GameMap.GetRelatedPositions(userPosition, 2)
 				protoUserPosition := &protodef.Position{
 					X: userPosition.X,
 					Y: userPosition.Y,
@@ -53,7 +53,7 @@ func CollectToSendUserRelatedDataToClient(mutualTerminationSignal chan bool, int
 					protoCell := &protodef.Cell{
 						Occupied: relatedPosition.Cell.Occupied,
 						Owner:    relatedPosition.Cell.Owner,
-						Kind:  int32(relatedPosition.Cell.Kind),
+						Kind:     int32(relatedPosition.Cell.Kind),
 					}
 					protoPosition := &protodef.Position{
 						X: relatedPosition.Position.X,
@@ -68,6 +68,7 @@ func CollectToSendUserRelatedDataToClient(mutualTerminationSignal chan bool, int
 				protoUserRelatedPositions := &protodef.RelatedPositions{
 					UserPosition:     protoUserPosition,
 					RelatedPositions: protoRelatedPositions,
+					Scoreboard:       game_map.GameMap.Scoreboard,
 				}
 
 				marshaledProtoUserRelatedPositions, err := proto.Marshal(protoUserRelatedPositions)
