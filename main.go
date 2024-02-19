@@ -49,6 +49,7 @@ func main() {
 	game_map.GameMap.InitializeCoins()
 	go game_map.GameMap.MoveCoinsRandomly()
 	game_map.UserPositions.UserPositions = make(map[string]*game_map.Position)
+	game_map.GameMap.ScoreBoard = make(map[string]int)
 
 	http.HandleFunc("GET /get-worker-port/{userId}/{clientIP}/{clientPort}", func(w http.ResponseWriter, r *http.Request) {
 		userId := r.PathValue("userId")
