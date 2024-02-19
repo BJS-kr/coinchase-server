@@ -2,8 +2,6 @@ syntax = "proto3";
 
 package status;
 
-import "google/protobuf/timestamp.proto";
-
 option go_package = "./protodef";
 
 message Position {
@@ -11,15 +9,7 @@ message Position {
     int32 y = 2;
 }
 
-message Item {
-    string id = 1;
-    string name = 2;
-    int32 amount = 3;
-}
-
 message Status {
     string id = 1;
     Position current_position = 2;
-    repeated Item items = 3;
-    google.protobuf.Timestamp sent_at = 4;
 }
