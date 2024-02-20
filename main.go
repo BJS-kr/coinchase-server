@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
 
 	"net/http"
 )
@@ -49,19 +50,22 @@ func main() {
 
 	// coin관련
 	game_map.GameMap.InitializeCoins()
+	game_map.GameMap.InitializeItems()
 	go game_map.GameMap.MoveCoinsRandomly()
 
-	game_map.UserPositions.UserPositions = make(map[string]*game_map.Position)
+	game_map.UserStatuses.UserStatuses = make(map[string]*game_map.UserStatus)
 	game_map.GameMap.Scoreboard = make(map[string]int32)
 
-	http.HandleFunc("GET /get-worker-port/{userId}/{clientIP}/{clientPort}", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("GET /get-worker-port/{userId}/{clientPort}", func(w http.ResponseWriter, r *http.Request) {
 		userId := r.PathValue("userId")
-		clientIP := net.ParseIP(r.PathValue("clientIP"))
+		// client port는 request에서 얻을 수 없다. 여기서 수령하는 포트는 클라이언트의 UDP 리스닝 포트이기 때문이다.
 		clientPort, err := strconv.Atoi(r.PathValue("clientPort"))
 
-		slog.Info("client information", "userId", userId, "clientIP", clientIP, "clientPort", clientPort)
+		slog.Info("client information", "userId", userId, "clientPort", clientPort)
 
 		w.Header().Set("Content-Type", "text/plain")
+
+		clientIP := net.ParseIP(strings.Split(r.RemoteAddr, ":")[0])
 
 		if clientIP == nil || err != nil || userId == "" {
 			w.WriteHeader(http.StatusBadRequest)
@@ -86,11 +90,11 @@ func main() {
 		io.WriteString(w, fmt.Sprintf("%d", worker.Port))
 
 		worker.StartSendUserRelatedDataToClient()
-
+		game_map.GameMap.Scoreboard[userId] = 0 // 굳이 zero value를 할당하는 이유는 0점이라도 표시가 되어야하기 때문
 	})
 
-	http.HandleFunc("PATCH /disconnect/{workerId}/", func(w http.ResponseWriter, r *http.Request) {
-		workerId := r.PathValue("workerId")
+	http.HandleFunc("PATCH /disconnect/{userId}/{workerId}/", func(w http.ResponseWriter, r *http.Request) {
+		userId, workerId := r.PathValue("userId"), r.PathValue("workerId")
 
 		if workerId == "" {
 			w.WriteHeader(http.StatusBadRequest)
@@ -110,6 +114,7 @@ func main() {
 		}
 
 		workerPool.Put(workerId, worker)
+		delete(game_map.GameMap.Scoreboard, userId)
 
 		w.WriteHeader(http.StatusOK)
 		io.WriteString(w, "worker successfully returned to pool")

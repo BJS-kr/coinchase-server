@@ -9,6 +9,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/golang/snappy"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -36,16 +37,16 @@ func CollectToSendUserRelatedDataToClient(mutualTerminationSignal chan bool, int
 		for {
 			select {
 			case <-ticker.C:
-				userPosition, ok := game_map.UserPositions.GetUserPosition(clientId)
+				userStatus, ok := game_map.UserStatuses.UserStatuses[clientId]
 
 				if !ok {
 					continue
 				}
-
-				relatedPositions := game_map.GameMap.GetRelatedPositions(userPosition, 2)
+				
+				relatedPositions := game_map.GameMap.GetRelatedPositions(userStatus.Position, int32(userStatus.ItemEffect))
 				protoUserPosition := &protodef.Position{
-					X: userPosition.X,
-					Y: userPosition.Y,
+					X: userStatus.Position.X,
+					Y: userStatus.Position.Y,
 				}
 
 				protoRelatedPositions := make([]*protodef.RelatedPosition, 0)
@@ -77,7 +78,10 @@ func CollectToSendUserRelatedDataToClient(mutualTerminationSignal chan bool, int
 					log.Fatal(err.Error())
 				}
 
-				_, err = client.Write(marshaledProtoUserRelatedPositions)
+				// packet size를 576바이트 이하로 유지하기 위해 snappy를 씁니다.
+				compressedUserRelatedPositions := snappy.Encode(nil, marshaledProtoUserRelatedPositions)
+				_, err = client.Write(compressedUserRelatedPositions)
+
 				if err != nil {
 					log.Fatal(err.Error())
 				}

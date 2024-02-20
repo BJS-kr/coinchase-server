@@ -1,27 +1,43 @@
 package game_map
 
 import (
+	"log/slog"
 	"math/rand/v2"
 	"slices"
 	"sync"
 	"time"
 )
 
-const MAP_SIZE int32 = 20
+const (MAP_SIZE int32 = 20
+		COIN_COUNT int = 10
+		ITEM_COUNT int = 2
+		EFFECT_DURATION int = 10
+)
 
-type Kind int32
-
+type TileKind int32
+type ItemEffect int32
 const (
 	UNKNOWN = iota
 	USER
 	COIN
+	ITEM_LENGTHEN_VISION
+	ITEM_SHORTEN_VISION
 	GROUND
 )
+
+const (
+	UNKNOWN_EFFECT = iota
+	NONE = 2
+	LENGTHEN = 4
+	SHORTEN = 1
+)
+
+
 
 type Cell struct {
 	Occupied bool
 	Owner    string
-	Kind     Kind
+	Kind     TileKind
 }
 type Row struct {
 	Cells []*Cell
@@ -29,15 +45,24 @@ type Row struct {
 type Map struct {
 	Rows []*Row
 }
+
+
 type RWMutexGameMap struct {
 	Map        *Map
 	Coins      []*Position
+	RandomItems []*Position
 	Scoreboard map[string]int32
 	RWMtx      sync.RWMutex
 }
-type RWMutexUserPositions struct {
+
+type UserStatus struct {
+	Position *Position
+	ItemEffect ItemEffect
+	ResetTimer *time.Timer
+}
+type RWMutexUserStatuses struct {
 	mtx           sync.RWMutex
-	UserPositions map[string]*Position
+	UserStatuses map[string]*UserStatus
 }
 
 type RelatedPosition struct {
@@ -46,7 +71,7 @@ type RelatedPosition struct {
 }
 
 var GameMap RWMutexGameMap
-var UserPositions RWMutexUserPositions
+var UserStatuses RWMutexUserStatuses
 
 // update와 read가 한 곳에서 일어나면 사실상 read가 wlock의 통제를 받게 되므로 Mutex를 사용하는 의미가 없다.
 // 그러므로 현재 맵 상태를 전달하는 것과 맵의 상태를 업데이트하는 연산은 별개로 이뤄져야한다.
@@ -69,22 +94,44 @@ type Status struct {
 	CurrentPosition Position
 }
 
-func (mup *RWMutexUserPositions) GetUserPosition(userId string) (*Position, bool) {
+func (mup *RWMutexUserStatuses) GetUserPosition(userId string) (*Position, bool) {
 	mup.mtx.RLock()
 	defer mup.mtx.RUnlock()
 
-	position, ok := mup.UserPositions[userId]
+	userStatus, ok := mup.UserStatuses[userId]
 
-	return position, ok
+	if !ok {
+		return nil, ok
+	}
+
+	return userStatus.Position, ok
 }
 
-func (mup *RWMutexUserPositions) SetUserPosition(userId string, X, Y int32) {
+func (mup *RWMutexUserStatuses) SetUserPosition(userId string, X, Y int32) {
 	mup.mtx.Lock()
 	defer mup.mtx.Unlock()
 
-	mup.UserPositions[userId] = &Position{
-		X: X,
-		Y: Y,
+	userStatus, ok :=mup.UserStatuses[userId]
+	
+	if !ok {
+		mup.UserStatuses[userId] = &UserStatus{
+			ItemEffect: NONE,
+			Position: &Position{
+				X:X,
+				Y:Y,
+			},
+		}
+
+		return
+	}
+
+	mup.UserStatuses[userId] = &UserStatus{
+		ItemEffect: userStatus.ItemEffect,
+		Position: &Position{
+			X:X,
+			Y:Y,
+		},
+		ResetTimer: userStatus.ResetTimer,
 	}
 }
 
@@ -97,24 +144,55 @@ func (m *RWMutexGameMap) UpdateUserPosition(userStatus *Status) {
 	defer m.RWMtx.Unlock()
 
 	if m.isOccupied(&userStatus.CurrentPosition) {
-		if m.Map.Rows[userStatus.CurrentPosition.Y].Cells[userStatus.CurrentPosition.X].Kind != COIN {
+		kind := m.Map.Rows[userStatus.CurrentPosition.Y].Cells[userStatus.CurrentPosition.X].Kind
+		if kind == COIN {
+			// lock을 얻었으니 MoveCoinsRandomly가 Lock을 얻지 못하고 대기해야하므로, 이곳에서의 정합성은 만족된다.
+			coinIdx := slices.IndexFunc(m.Coins, func(coinPosition *Position) bool {
+				return coinPosition.X == userStatus.CurrentPosition.X && coinPosition.Y == userStatus.CurrentPosition.Y
+			})
+
+			m.Coins = append(m.Coins[:coinIdx], m.Coins[coinIdx+1:]...)
+
+			if len(m.Coins) == 0 {
+				m.InitializeCoins()
+			}
+
+			m.Scoreboard[userStatus.Id] += 1
+		} else if kind == ITEM_LENGTHEN_VISION  || kind == ITEM_SHORTEN_VISION {
+			if UserStatuses.UserStatuses[userStatus.Id].ResetTimer != nil {
+				UserStatuses.UserStatuses[userStatus.Id].ResetTimer.Stop()
+			}
+			
+			UserStatuses.UserStatuses[userStatus.Id].ResetTimer = time.AfterFunc(time.Second * 6, func() {
+				UserStatuses.UserStatuses[userStatus.Id].ItemEffect = NONE
+			})
+			itemIdx := slices.IndexFunc(m.RandomItems, func(itemPosition *Position) bool {
+				return itemPosition.X == userStatus.CurrentPosition.X && itemPosition.Y == userStatus.CurrentPosition.Y
+			})
+
+			if itemIdx == -1 {
+				slog.Debug("Item exists but not found in slice")
+			}
+
+			m.RandomItems = append(m.RandomItems[:itemIdx], m.RandomItems[itemIdx+1:]...)
+
+			if len(m.RandomItems) == 0 {
+				m.InitializeItems()
+			}
+		
+			if kind == ITEM_LENGTHEN_VISION {
+				// UserStatuses를 변조하고 있으나, 변조하는 스레드들이 각자 RWMutexMap의 Lock을 얻어야하므로 상관없다.
+				UserStatuses.UserStatuses[userStatus.Id].ItemEffect = LENGTHEN
+			} else if kind == ITEM_SHORTEN_VISION{
+				UserStatuses.UserStatuses[userStatus.Id].ItemEffect = SHORTEN
+			}
+		} else {
 			return
 		}
-		// lock을 얻었으니 MoveCoinsRandomly가 Lock을 얻지 못하고 대기해야하므로, 이곳에서의 정합성은 만족된다.
-		coinIdx := slices.IndexFunc(m.Coins, func(coinPosition *Position) bool {
-			return coinPosition.X == userStatus.CurrentPosition.X && coinPosition.Y == userStatus.CurrentPosition.Y
-		})
 
-		m.Coins = append(m.Coins[:coinIdx], m.Coins[coinIdx+1:]...)
-
-		if len(m.Coins) == 0 {
-			m.InitializeCoins()
-		}
-
-		m.Scoreboard[userStatus.Id] += 1
 	}
 	// 이 currentPosition은 서버에 저장된 user의 위치 정보로, userStatus.CurrentPosition과는 다른 값이다.
-	currentPosition, exists := UserPositions.GetUserPosition(userStatus.Id)
+	currentPosition, exists := UserStatuses.GetUserPosition(userStatus.Id)
 
 	if exists {
 		m.Map.Rows[currentPosition.Y].Cells[currentPosition.X] = &Cell{
@@ -125,7 +203,7 @@ func (m *RWMutexGameMap) UpdateUserPosition(userStatus *Status) {
 
 	}
 
-	UserPositions.SetUserPosition(userStatus.Id, userStatus.CurrentPosition.X, userStatus.CurrentPosition.Y)
+	UserStatuses.SetUserPosition(userStatus.Id, userStatus.CurrentPosition.X, userStatus.CurrentPosition.Y)
 
 	m.Map.Rows[userStatus.CurrentPosition.Y].Cells[userStatus.CurrentPosition.X] = &Cell{
 		Occupied: true,
@@ -183,10 +261,38 @@ func (m *RWMutexGameMap) isOutOfRange(position *Position) bool {
 func (m *RWMutexGameMap) isOccupied(position *Position) bool {
 	return m.Map.Rows[position.Y].Cells[position.X].Occupied
 }
+func (m *RWMutexGameMap) InitializeItems() {
+	m.RandomItems = make([]*Position, 0)
+	// item은 coin과 다르게 항상 ITEM_COUNT만큼 생성되어야 한다.
+	toGenerate := ITEM_COUNT
 
+	for toGenerate > 0 {
+		x, y := rand.Int32N(MAP_SIZE), rand.Int32N(MAP_SIZE)
+		if m.Map.Rows[y].Cells[x].Occupied { continue }
+
+		itemCell := &Cell{
+			Occupied: true,
+			Owner: "system",
+		}
+
+		if generateRandomDirection() == 1 {
+			itemCell.Kind = ITEM_LENGTHEN_VISION
+		} else {
+			itemCell.Kind = ITEM_SHORTEN_VISION
+		}
+		
+		m.Map.Rows[y].Cells[x] = itemCell
+		m.RandomItems = append(m.RandomItems, &Position{
+			X:x,
+			Y:y,
+		})
+		toGenerate--
+	}
+
+}
 func (m *RWMutexGameMap) InitializeCoins() {
 	m.Coins = make([]*Position, 0)
-	for i := 0; i < 10; i++ { // 겹칠 수 있으니 코인의 갯수도 랜덤
+	for i := 0; i < COIN_COUNT; i++ { // 겹칠 수 있으니 코인의 갯수도 랜덤. 즉 COIN_COUNT보다 적게 생성 될 수도 있다.
 		x, y := rand.Int32N(MAP_SIZE), rand.Int32N(MAP_SIZE)
 		if !m.Map.Rows[y].Cells[x].Occupied {
 			m.Map.Rows[y].Cells[x] = &Cell{
