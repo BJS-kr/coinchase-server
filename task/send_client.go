@@ -42,7 +42,7 @@ func CollectToSendUserRelatedDataToClient(mutualTerminationSignal chan bool, int
 				if !ok {
 					continue
 				}
-				
+
 				relatedPositions := game_map.GameMap.GetRelatedPositions(userStatus.Position, int32(userStatus.ItemEffect))
 				protoUserPosition := &protodef.Position{
 					X: userStatus.Position.X,
@@ -83,7 +83,7 @@ func CollectToSendUserRelatedDataToClient(mutualTerminationSignal chan bool, int
 				_, err = client.Write(compressedUserRelatedPositions)
 
 				if err != nil {
-					log.Fatal(err.Error())
+					slog.Debug(err.Error())
 				}
 
 			case <-mutualTerminationSignal:
