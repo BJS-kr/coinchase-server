@@ -4,17 +4,23 @@ package test
 // 프로젝트의 목적 자체에 가까운 high throughput, low packet size, synchronization등을 테스트한다.
 
 import (
+	"fmt"
 	"multiplayer_server/game_map"
 	"multiplayer_server/worker_pool"
 	"net"
+	"net/http"
+	"strconv"
 	"testing"
 )
 
 // 서버가 켜진 상태에서 진행되는 시나리오 테스트
 func TestScenario(t *testing.T) {
+	clientListeners := make([]*net.UDPConn, 0)
+
 	t.Run("워커 생성(프로그램이 켜질 때 함께 생성됨. 워커 갯수 검사)", func(t *testing.T) {
 		if workerPool := worker_pool.GetWorkerPool(); len(workerPool.Pool) != worker_pool.WORKER_COUNT {
-			t.Errorf("worker pool initialization failed. initialized count: %d, expected count: %d", len(workerPool.Pool), worker_pool.WORKER_COUNT)
+			t.Log(workerPool.Pool)
+			t.Errorf("worker pool initialization failed. expected: %d, go: %d", worker_pool.WORKER_COUNT, len(workerPool.Pool))
 		}
 	})
 	// 기본 자원(map, coin, item) 생성 및 자원 갯수 검사
@@ -33,7 +39,6 @@ func TestScenario(t *testing.T) {
 	// 최대 수의 유저 로그인(워커풀이 비었음을 검사하고, 추가로 로그인 시도 시 실패)
 	t.Run("최대 수의 유저 로그인", func(t *testing.T) {
 		// 최대 수의 유저 로그인
-		clients := make([]*net.UDPConn, 0)
 		for i := 0; i < worker_pool.WORKER_COUNT; i++ {
 			// 로그인 시도
 
@@ -47,15 +52,35 @@ func TestScenario(t *testing.T) {
 				t.Errorf("failed to create UDP connection: %s", err)
 			}
 
-			clients = append(clients, conn)
+			clientListeners = append(clientListeners, conn)
+			clientPort := conn.LocalAddr().(*net.UDPAddr).Port
 			// 로그인 성공 검사
-
+			// 유저 아이디 생성
+			userId := "user" + strconv.Itoa(i)
+			http.Get(fmt.Sprintf("http://127.0.0.1:8888/get-worker-port/%s/%d", userId, clientPort))
 		}
-		// 로그인 시도
+		// 최대 유저를 넘어선 로그인 시도
 		// 로그인 실패 검사
+		userId := "user-over-limit"
+		resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:8888/get-worker-port/%s/%d", userId, 0))
+
+		if err != nil {
+			t.Errorf("failed to get response: %s", err)
+		}
+
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusConflict {
+			t.Errorf("expected status code: %d, got: %d", http.StatusConflict, resp.StatusCode)
+		}
 	})
+
 	// 유저의 랜덤 위치 이동(스코어가 쌓일 시간을 주기 위해 10초 실행. 복수의 유저가 크래시 없이 game map과 scoreboard에 write하고 점수를 쌓는 것 자체가 테스트의 목적)
-	// 유저 disconnect시 worker 반환 검사
+	t.Run("유저의 랜덤 위치 이동", func(t *testing.T) {
+
+	})
+
+	t.Run("유저 disconnect시 worker 반환", func(t *testing.T) {})
 
 	// 워커에 이상이 생겼을 때(health check에 실패했을 때) 복구 되는지 검사
 
