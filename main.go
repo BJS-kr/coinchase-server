@@ -16,7 +16,7 @@ import (
 	"net/http"
 )
 
-const WORKER_COUNT int = 10
+
 
 func main() {
 	var programLevel = new(slog.LevelVar)
@@ -24,10 +24,10 @@ func main() {
 	slog.SetDefault(slog.New(h))
 	programLevel.Set(slog.LevelDebug)
 	// initializeWorkers
-	task.LaunchWorkers(WORKER_COUNT)
+	task.LaunchWorkers(worker_pool.WORKER_COUNT)
 
-	if workerPool := worker_pool.GetWorkerPool(); len(workerPool.Pool) != WORKER_COUNT {
-		panic(fmt.Sprintf("worker pool initialization failed. initialized count: %d, expected count: %d", len(workerPool.Pool), WORKER_COUNT))
+	if workerPool := worker_pool.GetWorkerPool(); len(workerPool.Pool) != worker_pool.WORKER_COUNT {
+		panic(fmt.Sprintf("worker pool initialization failed. initialized count: %d, expected count: %d", len(workerPool.Pool), worker_pool.WORKER_COUNT))
 	}
 
 	// worker health check

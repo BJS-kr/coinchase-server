@@ -10,7 +10,7 @@ import (
 )
 
 type WorkerStatus int
-
+const WORKER_COUNT = 10
 const (
 	IDLE = iota + 1
 	PULLED_OUT

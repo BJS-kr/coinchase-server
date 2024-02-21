@@ -16,6 +16,7 @@ const (MAP_SIZE int32 = 20
 
 type TileKind int32
 type ItemEffect int32
+
 const (
 	UNKNOWN = iota
 	USER
@@ -31,8 +32,6 @@ const (
 	LENGTHEN = 4
 	SHORTEN = 1
 )
-
-
 
 type Cell struct {
 	Occupied bool
@@ -288,7 +287,6 @@ func (m *RWMutexGameMap) InitializeItems() {
 		})
 		toGenerate--
 	}
-
 }
 func (m *RWMutexGameMap) InitializeCoins() {
 	m.Coins = make([]*Position, 0)
