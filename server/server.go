@@ -13,10 +13,10 @@ import (
 	"strings"
 )
 
-func NewServer() *http.ServeMux{
+func NewServer() *http.ServeMux {
 	task.LaunchWorkers(worker_pool.WORKER_COUNT)
 
-	if workerPool := worker_pool.GetWorkerPool(); len(workerPool.Pool) != worker_pool.WORKER_COUNT {
+	if workerPool := worker_pool.GetWorkerPool(); workerPool.GetAvailableWorkerCount() != worker_pool.WORKER_COUNT {
 		panic(fmt.Sprintf("worker pool initialization failed. initialized count: %d, expected count: %d", len(workerPool.Pool), worker_pool.WORKER_COUNT))
 	}
 
@@ -109,6 +109,18 @@ func NewServer() *http.ServeMux{
 
 		w.WriteHeader(http.StatusOK)
 		io.WriteString(w, "worker successfully returned to pool")
+	})
+
+	// 서버 상태를 조회하기 위한 간단한 핸들러
+	server.HandleFunc("GET /server-state", func(w http.ResponseWriter, r *http.Request) {
+		workerPool := worker_pool.GetWorkerPool()
+		workerCount := workerPool.GetAvailableWorkerCount()
+		coinCount := len(game_map.GameMap.Coins)
+		itemCount := len(game_map.GameMap.RandomItems)
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		io.WriteString(w, fmt.Sprintf(`{"workerCount": %d, "coinCount": %d, "itemCount": %d}`, workerCount, coinCount, itemCount))
 	})
 
 	return server

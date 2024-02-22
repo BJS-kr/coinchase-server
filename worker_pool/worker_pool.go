@@ -10,6 +10,7 @@ import (
 )
 
 type WorkerStatus int
+
 const WORKER_COUNT = 10
 const (
 	IDLE = iota + 1
@@ -78,6 +79,18 @@ func GetWorkerPool() *WorkerPool {
 	}
 
 	return &workerPool
+}
+
+func (wp *WorkerPool) GetAvailableWorkerCount() int {
+	count := 0
+
+	for _, worker := range wp.Pool {
+		if worker.Status == IDLE {
+			count++
+		}
+	}
+
+	return count
 }
 
 func (wp *WorkerPool) Pull() (*Worker, error) {
