@@ -1,8 +1,10 @@
 package main
 
 import (
+	"log"
 	"log/slog"
 	"multiplayer_server/server"
+	"net/http"
 	"os"
 )
 
@@ -12,5 +14,6 @@ func main() {
 	slog.SetDefault(slog.New(h))
 	programLevel.Set(slog.LevelDebug)
 	// initializeWorkers
-	server.RunServer()
+	gameServer := server.NewServer()
+	log.Fatal(http.ListenAndServe(":8888", gameServer))
 }

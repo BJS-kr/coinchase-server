@@ -16,6 +16,7 @@ const (
 	PULLED_OUT
 	CLIENT_INFORMATION_RECEIVED
 	WORKING
+	TERMINATED
 )
 
 type WorkerPool struct {

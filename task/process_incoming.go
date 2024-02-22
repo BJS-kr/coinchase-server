@@ -8,8 +8,8 @@ import (
 	"sync"
 )
 
-func ProcessIncoming(worker *worker_pool.Worker, initWorker *sync.WaitGroup, statusReceiver <-chan *protodef.Status, workerPool *worker_pool.WorkerPool, mutualTerminationSignal chan bool) {
-	defer SendMutualTerminationSignal(mutualTerminationSignal)
+func ProcessIncoming(worker *worker_pool.Worker, initWorker *sync.WaitGroup, statusReceiver <-chan *protodef.Status, workerPool *worker_pool.WorkerPool, mutualTerminationSignal chan bool, sendMutualTerminationSignal func(chan bool)) {
+	defer sendMutualTerminationSignal(mutualTerminationSignal)
 
 	initWorker.Done()
 	slog.Info("Worker Initialized")
@@ -36,6 +36,7 @@ func ProcessIncoming(worker *worker_pool.Worker, initWorker *sync.WaitGroup, sta
 			worker.HealthChecker <- true
 
 		case <-mutualTerminationSignal:
+			worker.Status = worker_pool.TERMINATED
 			// 이 시그널이 도착했다는 것은 UDP receiver가 이미 panic했다는 의미이다. 그러므로 단순히 return하면 된다.
 			return
 		}

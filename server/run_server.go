@@ -3,7 +3,6 @@ package server
 import (
 	"fmt"
 	"io"
-	"log"
 	"log/slog"
 	"multiplayer_server/game_map"
 	"multiplayer_server/task"
@@ -14,7 +13,7 @@ import (
 	"strings"
 )
 
-func RunServer() {
+func NewServer() *http.ServeMux{
 	task.LaunchWorkers(worker_pool.WORKER_COUNT)
 
 	if workerPool := worker_pool.GetWorkerPool(); len(workerPool.Pool) != worker_pool.WORKER_COUNT {
@@ -47,7 +46,8 @@ func RunServer() {
 	game_map.UserStatuses.UserStatuses = make(map[string]*game_map.UserStatus)
 	game_map.GameMap.Scoreboard = make(map[string]int32)
 
-	http.HandleFunc("GET /get-worker-port/{userId}/{clientPort}", func(w http.ResponseWriter, r *http.Request) {
+	server := http.NewServeMux()
+	server.HandleFunc("GET /get-worker-port/{userId}/{clientPort}", func(w http.ResponseWriter, r *http.Request) {
 		userId := r.PathValue("userId")
 		// client port는 request에서 얻을 수 없다. 여기서 수령하는 포트는 클라이언트의 UDP 리스닝 포트이기 때문이다.
 		clientPort, err := strconv.Atoi(r.PathValue("clientPort"))
@@ -84,7 +84,7 @@ func RunServer() {
 		game_map.GameMap.Scoreboard[userId] = 0 // 굳이 zero value를 할당하는 이유는 0점이라도 표시가 되어야하기 때문
 	})
 
-	http.HandleFunc("PATCH /disconnect/{userId}/{workerId}/", func(w http.ResponseWriter, r *http.Request) {
+	server.HandleFunc("PATCH /disconnect/{userId}/{workerId}/", func(w http.ResponseWriter, r *http.Request) {
 		userId, workerId := r.PathValue("userId"), r.PathValue("workerId")
 
 		if workerId == "" {
@@ -111,5 +111,5 @@ func RunServer() {
 		io.WriteString(w, "worker successfully returned to pool")
 	})
 
-	log.Fatal(http.ListenAndServe(":8888", nil))
+	return server
 }

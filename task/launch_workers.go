@@ -16,8 +16,12 @@ import (
 func LaunchWorkers(workerCount int) {
 	workerPool := worker_pool.GetWorkerPool()
 	var initWorker sync.WaitGroup
-
 	// main goroutine이 직접 요청을 받기전 WORKER_COUNT만큼 워커를 활성화
+	if len(workerPool.Pool) >= worker_pool.WORKER_COUNT { 
+		slog.Debug("worker pool is already full") 
+		return
+	}
+
 	for workerId := 0; workerId < workerCount; workerId++ {
 
 		statusChannel := make(chan *protodef.Status)
@@ -30,11 +34,12 @@ func LaunchWorkers(workerCount int) {
 		port := conn.LocalAddr().(*net.UDPAddr).Port
 		worker := workerPool.MakeWorker(port)
 
-		worker.CollectedSendUserRelatedDataToClient = CollectToSendUserRelatedDataToClient(mutualTerminationSignal, time.Millisecond*100)
+		sendMutualTerminationSignal := CollectWorkerForMutualTermination(worker)
+		worker.CollectedSendUserRelatedDataToClient = CollectToSendUserRelatedDataToClient(mutualTerminationSignal, sendMutualTerminationSignal ,time.Millisecond*100)
 		workerPool.Put(uuid.New().String(), worker)
-
-		go ReceiveDataFromClient(conn, statusChannel, &initWorker, mutualTerminationSignal)
-		go ProcessIncoming(worker, &initWorker, statusChannel, workerPool, mutualTerminationSignal)
+		
+		go ReceiveDataFromClient(conn, statusChannel, &initWorker, mutualTerminationSignal, sendMutualTerminationSignal)
+		go ProcessIncoming(worker, &initWorker, statusChannel, workerPool, mutualTerminationSignal, sendMutualTerminationSignal)
 	}
 
 	workerInitializationTimeout, cancel := context.WithTimeout(context.Background(), time.Second*3)

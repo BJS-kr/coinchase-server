@@ -13,11 +13,10 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func CollectToSendUserRelatedDataToClient(mutualTerminationSignal chan bool, interval time.Duration) func(clientID string, clientIP *net.IP, clientPort int, stopClientSendSignal chan bool) {
+func CollectToSendUserRelatedDataToClient(mutualTerminationSignal chan bool, sendMutualTerminationSignal func(chan bool), interval time.Duration) func(clientID string, clientIP *net.IP, clientPort int, stopClientSendSignal chan bool) {
 	// 먼저 공통의 자원을 수집하기 위해 deferred execution으로 처리
-
 	return func(clientId string, clientIP *net.IP, clientPort int, stopClientSendSignal chan bool) {
-		defer SendMutualTerminationSignal(mutualTerminationSignal)
+		defer sendMutualTerminationSignal(mutualTerminationSignal)
 		clientAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", clientIP.String(), clientPort))
 
 		if err != nil {
@@ -33,6 +32,7 @@ func CollectToSendUserRelatedDataToClient(mutualTerminationSignal chan bool, int
 
 		// sleep은 너무 비싼 태스크라 tick로 실행함
 		ticker := time.NewTicker(interval)
+		faultTolerance := 100
 
 		for {
 			select {
@@ -83,7 +83,13 @@ func CollectToSendUserRelatedDataToClient(mutualTerminationSignal chan bool, int
 				_, err = client.Write(compressedUserRelatedPositions)
 
 				if err != nil {
-					slog.Debug(err.Error())
+					slog.Debug(err.Error(), "fault tolerance remain:", faultTolerance)
+					faultTolerance--
+
+					// panic은 연관된 모든 자원을 정리하도록 설계되어 있음
+					if faultTolerance <=  0 {
+						panic(err)
+					}
 				}
 
 			case <-mutualTerminationSignal:
