@@ -137,10 +137,14 @@ func (wp *WorkerPool) PoolSize() int {
 	return len(wp.Pool)
 }
 
-func (wp *WorkerPool) GetWorkerById(workerId string) (*Worker, bool) {
-	worker, ok := wp.Pool[workerId]
+func (wp *WorkerPool) GetWorkerByUserId(userId string) (string, *Worker, error) {
+	for workerId, worker := range wp.Pool {
+		if worker.OwnerUserID == userId {
+			return workerId, worker, nil
+		}
+	}
 
-	return worker, ok
+	return "", nil, errors.New("worker not found")
 }
 
 func (wp *WorkerPool) MakeWorker(port int) *Worker {

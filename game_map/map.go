@@ -8,10 +8,11 @@ import (
 	"time"
 )
 
-const (MAP_SIZE int32 = 20
-		COIN_COUNT int = 10
-		ITEM_COUNT int = 2
-		EFFECT_DURATION int = 10
+const (
+	MAP_SIZE        int32 = 20
+	COIN_COUNT      int   = 10
+	ITEM_COUNT      int   = 2
+	EFFECT_DURATION int   = 10
 )
 
 type TileKind int32
@@ -28,9 +29,9 @@ const (
 
 const (
 	UNKNOWN_EFFECT = iota
-	NONE = 2
-	LENGTHEN = 4
-	SHORTEN = 1
+	NONE           = 2
+	LENGTHEN       = 4
+	SHORTEN        = 1
 )
 
 type Cell struct {
@@ -45,22 +46,21 @@ type Map struct {
 	Rows []*Row
 }
 
-
 type RWMutexGameMap struct {
-	Map        *Map
-	Coins      []*Position
+	Map         *Map
+	Coins       []*Position
 	RandomItems []*Position
-	Scoreboard map[string]int32
-	RWMtx      sync.RWMutex
+	Scoreboard  map[string]int32
+	RWMtx       sync.RWMutex
 }
 
 type UserStatus struct {
-	Position *Position
+	Position   *Position
 	ItemEffect ItemEffect
 	ResetTimer *time.Timer
 }
 type RWMutexUserStatuses struct {
-	mtx           sync.RWMutex
+	mtx          sync.RWMutex
 	UserStatuses map[string]*UserStatus
 }
 
@@ -110,14 +110,14 @@ func (mup *RWMutexUserStatuses) SetUserPosition(userId string, X, Y int32) {
 	mup.mtx.Lock()
 	defer mup.mtx.Unlock()
 
-	userStatus, ok :=mup.UserStatuses[userId]
-	
+	userStatus, ok := mup.UserStatuses[userId]
+
 	if !ok {
 		mup.UserStatuses[userId] = &UserStatus{
 			ItemEffect: NONE,
 			Position: &Position{
-				X:X,
-				Y:Y,
+				X: X,
+				Y: Y,
 			},
 		}
 
@@ -127,8 +127,8 @@ func (mup *RWMutexUserStatuses) SetUserPosition(userId string, X, Y int32) {
 	mup.UserStatuses[userId] = &UserStatus{
 		ItemEffect: userStatus.ItemEffect,
 		Position: &Position{
-			X:X,
-			Y:Y,
+			X: X,
+			Y: Y,
 		},
 		ResetTimer: userStatus.ResetTimer,
 	}
@@ -157,12 +157,12 @@ func (m *RWMutexGameMap) UpdateUserPosition(userStatus *Status) {
 			}
 
 			m.Scoreboard[userStatus.Id] += 1
-		} else if kind == ITEM_LENGTHEN_VISION  || kind == ITEM_SHORTEN_VISION {
+		} else if kind == ITEM_LENGTHEN_VISION || kind == ITEM_SHORTEN_VISION {
 			if UserStatuses.UserStatuses[userStatus.Id].ResetTimer != nil {
 				UserStatuses.UserStatuses[userStatus.Id].ResetTimer.Stop()
 			}
-			
-			UserStatuses.UserStatuses[userStatus.Id].ResetTimer = time.AfterFunc(time.Second * 6, func() {
+
+			UserStatuses.UserStatuses[userStatus.Id].ResetTimer = time.AfterFunc(time.Second*6, func() {
 				UserStatuses.UserStatuses[userStatus.Id].ItemEffect = NONE
 			})
 			itemIdx := slices.IndexFunc(m.RandomItems, func(itemPosition *Position) bool {
@@ -178,11 +178,11 @@ func (m *RWMutexGameMap) UpdateUserPosition(userStatus *Status) {
 			if len(m.RandomItems) == 0 {
 				m.InitializeItems()
 			}
-		
+
 			if kind == ITEM_LENGTHEN_VISION {
 				// UserStatuses를 변조하고 있으나, 변조하는 스레드들이 각자 RWMutexMap의 Lock을 얻어야하므로 상관없다.
 				UserStatuses.UserStatuses[userStatus.Id].ItemEffect = LENGTHEN
-			} else if kind == ITEM_SHORTEN_VISION{
+			} else if kind == ITEM_SHORTEN_VISION {
 				UserStatuses.UserStatuses[userStatus.Id].ItemEffect = SHORTEN
 			}
 		} else {
@@ -267,23 +267,25 @@ func (m *RWMutexGameMap) InitializeItems() {
 
 	for toGenerate > 0 {
 		x, y := rand.Int32N(MAP_SIZE), rand.Int32N(MAP_SIZE)
-		if m.Map.Rows[y].Cells[x].Occupied { continue }
+		if m.Map.Rows[y].Cells[x].Occupied {
+			continue
+		}
 
 		itemCell := &Cell{
 			Occupied: true,
-			Owner: "system",
+			Owner:    "system",
 		}
 
-		if generateRandomDirection() == 1 {
+		if GenerateRandomDirection() == 1 {
 			itemCell.Kind = ITEM_LENGTHEN_VISION
 		} else {
 			itemCell.Kind = ITEM_SHORTEN_VISION
 		}
-		
+
 		m.Map.Rows[y].Cells[x] = itemCell
 		m.RandomItems = append(m.RandomItems, &Position{
-			X:x,
-			Y:y,
+			X: x,
+			Y: y,
 		})
 		toGenerate--
 	}
@@ -316,8 +318,8 @@ func (m *RWMutexGameMap) MoveCoinsRandomly() {
 
 			for i, coinPosition := range m.Coins {
 				newPos := &Position{
-					X: coinPosition.X + generateRandomDirection(),
-					Y: coinPosition.Y + generateRandomDirection(),
+					X: coinPosition.X + GenerateRandomDirection(),
+					Y: coinPosition.Y + GenerateRandomDirection(),
 				}
 
 				if m.isOutOfRange(newPos) || m.isOccupied(newPos) {
@@ -342,7 +344,7 @@ func (m *RWMutexGameMap) MoveCoinsRandomly() {
 	}
 }
 
-func generateRandomDirection() int32 {
+func GenerateRandomDirection() int32 {
 	if rand.Int32N(2) == 0 {
 		return -1
 	}

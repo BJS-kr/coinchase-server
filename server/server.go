@@ -84,23 +84,15 @@ func NewServer() *http.ServeMux {
 		game_map.GameMap.Scoreboard[userId] = 0 // 굳이 zero value를 할당하는 이유는 0점이라도 표시가 되어야하기 때문
 	})
 
-	server.HandleFunc("PATCH /disconnect/{userId}/{workerId}/", func(w http.ResponseWriter, r *http.Request) {
-		userId, workerId := r.PathValue("userId"), r.PathValue("workerId")
-
-		if workerId == "" {
-			w.WriteHeader(http.StatusBadRequest)
-			io.WriteString(w, "worker id did not received")
-
-			return
-		}
+	server.HandleFunc("PATCH /disconnect/{userId}", func(w http.ResponseWriter, r *http.Request) {
+		userId := r.PathValue("userId")
 
 		workerPool := worker_pool.GetWorkerPool()
-		worker, ok := workerPool.GetWorkerById(workerId)
+		workerId, worker, err := workerPool.GetWorkerByUserId(userId)
 
-		if !ok {
-			w.WriteHeader(http.StatusBadRequest)
-			io.WriteString(w, "received worker id not found in worker pool")
-
+		if err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			io.WriteString(w, "worker not found")
 			return
 		}
 
