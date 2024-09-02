@@ -15,5 +15,6 @@ func main() {
 	programLevel.Set(slog.LevelDebug)
 	// initializeWorkers
 	gameServer := server.NewServer()
+
 	log.Fatal(http.ListenAndServe(":8888", gameServer))
 }

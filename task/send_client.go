@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
-	"multiplayer_server/game_map"
+	"multiplayer_server/global"
 	"multiplayer_server/protodef"
 	"net"
 	"time"
@@ -17,13 +17,13 @@ func CollectToSendUserRelatedDataToClient(mutualTerminationSignal chan bool, sen
 	// 먼저 공통의 자원을 수집하기 위해 deferred execution으로 처리
 	return func(clientId string, clientIP *net.IP, clientPort int, stopClientSendSignal chan bool) {
 		defer sendMutualTerminationSignal(mutualTerminationSignal)
-		clientAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", clientIP.String(), clientPort))
+		clientAddr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%d", clientIP.String(), clientPort))
 
 		if err != nil {
 			log.Fatal(err.Error())
 		}
 
-		client, err := net.DialUDP("udp", nil, clientAddr)
+		client, err := net.DialTCP("tcp", nil, clientAddr)
 
 		if err != nil {
 			slog.Debug(err.Error())
@@ -31,19 +31,21 @@ func CollectToSendUserRelatedDataToClient(mutualTerminationSignal chan bool, sen
 		}
 
 		// sleep은 너무 비싼 태스크라 tick로 실행함
+		// TODO tick으로 보내지말고 game map의 스테이터스가 업데이트되면 시그널 받아서 전파해주자.
+		// TODO keepalive로 보내주자
 		ticker := time.NewTicker(interval)
 		faultTolerance := 100
 
 		for {
 			select {
 			case <-ticker.C:
-				userStatus, ok := game_map.UserStatuses.UserStatuses[clientId]
+				userStatus, ok := global.GlobalUserStatuses.UserStatuses[clientId]
 
 				if !ok {
 					continue
 				}
 
-				relatedPositions := game_map.GameMap.GetRelatedPositions(userStatus.Position, int32(userStatus.ItemEffect))
+				relatedPositions := global.GlobalGameMap.GetRelatedPositions(userStatus.Position, int32(userStatus.ItemEffect))
 				protoUserPosition := &protodef.Position{
 					X: userStatus.Position.X,
 					Y: userStatus.Position.Y,
@@ -69,7 +71,7 @@ func CollectToSendUserRelatedDataToClient(mutualTerminationSignal chan bool, sen
 				protoUserRelatedPositions := &protodef.RelatedPositions{
 					UserPosition:     protoUserPosition,
 					RelatedPositions: protoRelatedPositions,
-					Scoreboard:       game_map.GameMap.Scoreboard,
+					Scoreboard:       global.GlobalGameMap.Scoreboard,
 				}
 
 				marshaledProtoUserRelatedPositions, err := proto.Marshal(protoUserRelatedPositions)
@@ -87,7 +89,7 @@ func CollectToSendUserRelatedDataToClient(mutualTerminationSignal chan bool, sen
 					faultTolerance--
 
 					// panic은 연관된 모든 자원을 정리하도록 설계되어 있음
-					if faultTolerance <=  0 {
+					if faultTolerance <= 0 {
 						panic(err)
 					}
 				}

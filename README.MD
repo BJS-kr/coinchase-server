@@ -1,8 +1,7 @@
 # Coin chase server
 
 ## Multiplayer capabilities
-
-UDP로 상태를 갱신 및 전파하며, 패킷 경량화를 위해 protocol buffer를 이용합니다.
+TCP로 상태를 갱신 및 전파하며, protocol buffer를 사용합니다.
 
 유저의 상태는 단순히 메모리에 유지됩니다. 서버가 꺼지면 유저의 정보도 사라집니다.
 이렇게 구현한 이유는 게임 로직이 간단하기도 하고, 프로젝트의 목적을 고려하여 설계했습니다.
@@ -23,3 +22,22 @@ UDP로 상태를 갱신 및 전파하며, 패킷 경량화를 위해 protocol bu
 6. 아이템은 랜덤박스입니다. 시야가 두 배가 되거나, 절반이 됩니다. 아이템은 항상 두 개가 생성됩니다.
 7. 동전과 아이템은 모두 소진시 재생성 됩니다.
 8. 유저의 점수는 좌상단 스코어보드에 표시됩니다.
+
+## Optimizations
+1. Actor Model 적용
+    * no lock to shared resource
+2. 버퍼 재사용
+3. tcp keepalive 사용
+
+## 안전성 제고
+1. health check & revive
+2. fault tolerance limit
+3. worker creation check
+4. maintain worker pool size
+5. mutual termination of related goroutines
+
+## TODO
+파일들이 너무 그냥 나열되어있다...파일 구조와 이름만으로도 뭘 하는지 알수있게 좀 정리가 필요하다.
+
+
+

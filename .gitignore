@@ -1,3 +1,4 @@
 client/build/bin
 client/node_modules
 client/frontend/dist
+.env

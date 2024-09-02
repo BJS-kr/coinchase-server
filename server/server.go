@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"multiplayer_server/game_map"
+	"multiplayer_server/global"
 	"multiplayer_server/task"
 	"multiplayer_server/worker_pool"
 	"net"
@@ -14,42 +14,45 @@ import (
 )
 
 func NewServer() *http.ServeMux {
-	task.LaunchWorkers(worker_pool.WORKER_COUNT)
+	// TODO env로 빼자
+	statusChannel := make(chan *global.Status)
+	task.LaunchWorkers(worker_pool.WORKER_COUNT, statusChannel)
 
 	if workerPool := worker_pool.GetWorkerPool(); workerPool.GetAvailableWorkerCount() != worker_pool.WORKER_COUNT {
 		panic(fmt.Sprintf("worker pool initialization failed. initialized count: %d, expected count: %d", len(workerPool.Pool), worker_pool.WORKER_COUNT))
 	}
 
-	// worker health check
-	go task.HealthCheckAndRevive(10)
+	go task.HealthCheckAndRevive(10, statusChannel)
+	go global.GlobalGameMap.StartUpdateObjectPosition(statusChannel)
 
-	game_map.GameMap.Map = &game_map.Map{
-		Rows: make([]*game_map.Row, game_map.MAP_SIZE),
+	global.GlobalGameMap.Map = &global.Map{
+		Rows: make([]*global.Row, global.MAP_SIZE),
 	}
 
-	for i := 0; i < int(game_map.MAP_SIZE); i++ {
-		game_map.GameMap.Map.Rows[i] = &game_map.Row{
-			Cells: make([]*game_map.Cell, game_map.MAP_SIZE),
+	for i := 0; i < int(global.MAP_SIZE); i++ {
+		global.GlobalGameMap.Map.Rows[i] = &global.Row{
+			Cells: make([]*global.Cell, global.MAP_SIZE),
 		}
-		for j := 0; j < int(game_map.MAP_SIZE); j++ {
-			game_map.GameMap.Map.Rows[i].Cells[j] = &game_map.Cell{
-				Kind: game_map.GROUND,
+		for j := 0; j < int(global.MAP_SIZE); j++ {
+			global.GlobalGameMap.Map.Rows[i].Cells[j] = &global.Cell{
+				Kind: global.GROUND,
 			}
 		}
 	}
 
 	// coin관련
-	game_map.GameMap.InitializeCoins()
-	game_map.GameMap.InitializeItems()
-	go game_map.GameMap.MoveCoinsRandomly()
+	global.GlobalGameMap.InitializeCoins()
+	global.GlobalGameMap.InitializeItems()
+	// interval하게 실행됨
+	go task.SendCoinMoveSignalIntervally(statusChannel, 500)
 
-	game_map.UserStatuses.UserStatuses = make(map[string]*game_map.UserStatus)
-	game_map.GameMap.Scoreboard = make(map[string]int32)
+	global.GlobalUserStatuses.UserStatuses = make(map[string]*global.UserStatus)
+	global.GlobalGameMap.Scoreboard = make(map[string]int32)
 
 	server := http.NewServeMux()
 	server.HandleFunc("GET /get-worker-port/{userId}/{clientPort}", func(w http.ResponseWriter, r *http.Request) {
 		userId := r.PathValue("userId")
-		// client port는 request에서 얻을 수 없다. 여기서 수령하는 포트는 클라이언트의 UDP 리스닝 포트이기 때문이다.
+		// client port는 request에서 얻을 수 없다. 여기서 수령하는 포트는 클라이언트의 TCP 리스닝 포트이기 때문이다.
 		clientPort, err := strconv.Atoi(r.PathValue("clientPort"))
 
 		slog.Info("client information", "userId", userId, "clientPort", clientPort)
@@ -81,7 +84,7 @@ func NewServer() *http.ServeMux {
 		io.WriteString(w, fmt.Sprintf("%d", worker.Port))
 
 		worker.StartSendUserRelatedDataToClient()
-		game_map.GameMap.Scoreboard[userId] = 0 // 굳이 zero value를 할당하는 이유는 0점이라도 표시가 되어야하기 때문
+		global.GlobalGameMap.Scoreboard[userId] = 0 // 굳이 zero value를 할당하는 이유는 0점이라도 표시가 되어야하기 때문
 	})
 
 	server.HandleFunc("PATCH /disconnect/{userId}", func(w http.ResponseWriter, r *http.Request) {
@@ -97,7 +100,7 @@ func NewServer() *http.ServeMux {
 		}
 
 		workerPool.Put(workerId, worker)
-		delete(game_map.GameMap.Scoreboard, userId)
+		delete(global.GlobalGameMap.Scoreboard, userId)
 
 		w.WriteHeader(http.StatusOK)
 		io.WriteString(w, "worker successfully returned to pool")
@@ -107,8 +110,8 @@ func NewServer() *http.ServeMux {
 	server.HandleFunc("GET /server-state", func(w http.ResponseWriter, r *http.Request) {
 		workerPool := worker_pool.GetWorkerPool()
 		workerCount := workerPool.GetAvailableWorkerCount()
-		coinCount := len(game_map.GameMap.Coins)
-		itemCount := len(game_map.GameMap.RandomItems)
+		coinCount := len(global.GlobalGameMap.Coins)
+		itemCount := len(global.GlobalGameMap.RandomItems)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
