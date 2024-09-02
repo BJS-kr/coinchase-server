@@ -27,9 +27,6 @@ func LaunchWorkers(workerCount int, statusChannel chan *global.Status) {
 	}
 
 	for workerId := 0; workerId < workerCount; workerId++ {
-
-		mutualTerminationSignal := make(chan bool)
-
 		// Add를 워커 시작전에 호출하는 이유는 Done이 Add보다 먼저 호출되는 경우를 막기 위해서이다.
 		initWorker.Add(2)
 
@@ -37,18 +34,19 @@ func LaunchWorkers(workerCount int, statusChannel chan *global.Status) {
 		port := tcpListener.Addr().(*net.TCPAddr).Port
 		worker := workerPool.MakeWorker(port)
 
-		sendMutualTerminationSignal := CollectWorkerForMutualTermination(worker)
-		worker.CollectedSendUserRelatedDataToClient = CollectToSendUserRelatedDataToClient(mutualTerminationSignal, sendMutualTerminationSignal, time.Millisecond*100)
+		mutualTerminationContext, mutualCancel := context.WithCancel(context.Background())
+		sendMutualTerminationSignal := CollectWorkerForMutualTermination(worker, mutualCancel)
+		worker.CollectedSendUserRelatedDataToClient = CollectToSendUserRelatedDataToClient(sendMutualTerminationSignal, mutualTerminationContext, time.Millisecond*100)
 		workerPool.Put(uuid.New().String(), worker)
 
-		go ReceiveDataFromClient(tcpListener, statusChannel, &initWorker, mutualTerminationSignal, sendMutualTerminationSignal)
+		go ReceiveDataFromClient(tcpListener, statusChannel, &initWorker, sendMutualTerminationSignal, mutualTerminationContext)
 	}
 
-	workerInitializationTimeout, cancel := context.WithTimeout(context.Background(), time.Second*3)
+	workerInitializationTimeout, workerInitializationTimeoutCancel := context.WithTimeout(context.Background(), time.Second*3)
 	workerInitializationSuccessSignal := make(chan bool)
 
 	go func() {
-		defer cancel()
+		defer workerInitializationTimeoutCancel()
 
 		initWorker.Wait()
 		workerInitializationSuccessSignal <- true

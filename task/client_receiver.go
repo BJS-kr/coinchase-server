@@ -1,6 +1,7 @@
 package task
 
 import (
+	"context"
 	"log"
 	"multiplayer_server/global"
 	"multiplayer_server/protodef"
@@ -22,8 +23,8 @@ import (
 // 자세한 내용은 https://stackoverflow.com/questions/72553044/what-happens-to-unfinished-goroutines-when-the-main-parent-goroutine-exits-or-re을 참고
 const KEEPALIVE_WAIT_LIMIT = time.Second * 300
 
-func ReceiveDataFromClient(tcpListener *net.TCPListener, statusSender chan<- *global.Status, initWorker *sync.WaitGroup, mutualTerminationSignal chan bool, sendMutualTerminationSignal func(chan bool)) {
-	defer sendMutualTerminationSignal(mutualTerminationSignal)
+func ReceiveDataFromClient(tcpListener *net.TCPListener, statusSender chan<- *global.Status, initWorker *sync.WaitGroup, sendMutualTerminationSignal func(), mutualTerminationContext context.Context) {
+	defer sendMutualTerminationSignal()
 	defer tcpListener.Close()
 
 	initWorker.Done()
@@ -37,7 +38,7 @@ func ReceiveDataFromClient(tcpListener *net.TCPListener, statusSender chan<- *gl
 
 	for {
 		select {
-		case <-mutualTerminationSignal:
+		case <-mutualTerminationContext.Done():
 			slog.Info("Termination signal receive in TCP receiver")
 			return
 
