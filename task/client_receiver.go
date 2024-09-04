@@ -1,7 +1,10 @@
 package task
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"io"
 	"log"
 	"multiplayer_server/global"
 	"multiplayer_server/protodef"
@@ -21,7 +24,9 @@ import (
 // graceful shutdown(wait until return이나 terminate signal(runtime.Goexit)등)을 만들지 않은 이유
 // main goroutine이 종료된다고 해서 나머지 goroutine이 동시에 처리되는 것은 아니나, 이는 leak을 만들지 않고 결국 종료된다.
 // 자세한 내용은 https://stackoverflow.com/questions/72553044/what-happens-to-unfinished-goroutines-when-the-main-parent-goroutine-exits-or-re을 참고
-const KEEPALIVE_WAIT_LIMIT = time.Second * 300
+const READ_DEADLINE = time.Second * 300
+const BUFFER_SIZE = 4096
+const BUFFER_DELIMITER byte = '$'
 
 func ReceiveDataFromClient(tcpListener *net.TCPListener, statusSender chan<- *global.Status, initWorker *sync.WaitGroup, sendMutualTerminationSignal func(), mutualTerminationContext context.Context) {
 	defer sendMutualTerminationSignal()
@@ -33,8 +38,27 @@ func ReceiveDataFromClient(tcpListener *net.TCPListener, statusSender chan<- *gl
 	// IPv4체계에서 최소 패킷의 크기는 576bytes이다(https://networkengineering.stackexchange.com/questions/76459/what-is-the-minimum-mtu-of-ipv4-68-bytes-or-576-bytes#:~:text=576%20bytes%20is%20the%20minimum%20IPv4%20packet%20(datagram)%20size%20that,must%20be%20able%20to%20handle).
 	// 이 중 헤더를 뺀 값이 508bytes이며, 이는 UDP라 할지라도 절대 나뉘어질 수 없는 최소크기이다.
 	// 그러나 일반적으로 2의 제곱수를 할당하는 것이 관례이므로 576보다 큰 최소 2의 제곱수 1024로 buffer를 만든다.
-	// TODO keepalive로 수신하자
-	buffer := make([]byte, 1024)
+	buffer := make([]byte, BUFFER_SIZE)
+	queueBuffer := bytes.NewBuffer(nil)
+	conn, err := tcpListener.AcceptTCP()
+
+	if err != nil {
+		log.Fatal("TCP accepting failed\n" + err.Error())
+	}
+
+	// READ_DEADLINE만큼 idle상태이면 클라이언트를 유지할 이유가 없다고 판단하고 종료
+	// read deadline에 도달시, 아래의 conn.Read에서 error발생
+	// Read할 때 단순히 log.Fatal해버리고 있는데, 어차피 이 함수는 관리되고있기 때문에 관련된 goroutine들이 모두 종료되고 새로운 worker가 삽입된다.
+	// 아울러 하단의 for select구문의 default에서 유저가 보낸 데이터가 수신되면 read deadline을 5분씩 연장하고 있다.
+	if err := conn.SetReadDeadline(time.Now().Add(READ_DEADLINE)); err != nil {
+		log.Fatal("failed to set read deadline to TCP connection")
+	}
+
+	if err := conn.SetKeepAlive(true); err != nil {
+		log.Fatal("failed to set keepalive to TCP connection")
+	}
+
+	defer conn.Close()
 
 	for {
 		select {
@@ -43,58 +67,55 @@ func ReceiveDataFromClient(tcpListener *net.TCPListener, statusSender chan<- *gl
 			return
 
 		default:
-			conn, err := tcpListener.AcceptTCP()
-
-			if err != nil {
-				log.Fatal("custom message: TCP accepting failed\n" + err.Error())
-			}
-
-			// 한 번 클라이언트와 커넥션이 연결되면 업데이트를 별도의 커넥션으로 받지 않고 keepalive로 계속 받는다.
-			// TODO 테스트 필요. 연결이 계속 체결되어있든 말든 일단 유저가 업데이트 패킷을 한번 보내면 거기에 대한 상태 업데이트를 실행해야한다. keepalive상태일때도 이게 계속 되는지를 테스트해봐야함
-			err = conn.SetKeepAlive(true)
-
-			if err != nil {
-
-			}
-
-			err = conn.SetKeepAlivePeriod(KEEPALIVE_WAIT_LIMIT)
-
-			if err != nil {
-
-			}
-
-			amount, err := conn.Read(buffer)
-
-			if err != nil {
-				log.Fatal("custom message: Read from TCP connection failed\n" + err.Error())
-			}
-
-			protoStatus := new(protodef.Status)
-			err = proto.Unmarshal(buffer[:amount], protoStatus)
-
-			if err != nil {
-				log.Fatal("custom message: TCP unmarshal failed\n" + err.Error())
-			}
-
-			userStatus := &global.Status{
-				Type: global.STATUS_TYPE_USER,
-				Id:   protoStatus.Id,
-				CurrentPosition: global.Position{
-					X: protoStatus.CurrentPosition.X,
-					Y: protoStatus.CurrentPosition.Y,
-				},
-			}
-
-			statusSender <- userStatus
 			// 성능을 위해 buffer를 재사용한다.
 			// buffer에 nil을 할당하게 되면 underlying array가 garbage collection되므로 단순히 slice의 길이를 0으로 만든다.
 			// 고려사항에 ring buffer가 있었으나, container/ring이 성능적으로 더 나은지 테스트를 해보지 않아 일단 직관적인 구현
-			buffer = buffer[:0]
-			err = conn.Close()
+			size, err := conn.Read(buffer)
+
+			if size >= BUFFER_SIZE {
+				log.Fatal("received TCP packet size exceeded the buffer size")
+			}
 
 			if err != nil {
-				log.Fatal("custom message: closing TCP connection failed\n" + err.Error())
+				log.Fatal("Read from TCP connection failed\n" + err.Error())
 			}
+
+			if size > 0 {
+				queueBuffer.Write(buffer[:size])
+
+				for {
+					data, err := queueBuffer.ReadBytes(BUFFER_DELIMITER)
+
+					if err != nil {
+						if errors.Is(err, io.EOF) {
+							queueBuffer.Write(data)
+							break
+						} else {
+							log.Fatal("ReadBytes returned error other than EOF(unexpected)", err.Error())
+						}
+					}
+
+					protoStatus := new(protodef.Status)
+
+					if err := proto.Unmarshal(data[:len(data)-1], protoStatus); err != nil {
+						log.Fatal("TCP unmarshal failed\n" + err.Error())
+					}
+
+					userStatus := &global.Status{
+						Type: global.STATUS_TYPE_USER,
+						Id:   protoStatus.Id,
+						CurrentPosition: global.Position{
+							X: protoStatus.CurrentPosition.X,
+							Y: protoStatus.CurrentPosition.Y,
+						},
+					}
+
+					statusSender <- userStatus
+				}
+
+				conn.SetReadDeadline(time.Now().Add(READ_DEADLINE))
+			}
+
 		}
 	}
 }

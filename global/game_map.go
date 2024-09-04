@@ -2,6 +2,7 @@
 package global
 
 import (
+	"log"
 	"log/slog"
 	"math/rand/v2"
 	"slices"
@@ -29,7 +30,7 @@ type GameMap struct {
 	Scoreboard  map[string]int32
 }
 
-func (m *GameMap) StartUpdateObjectPosition(statusReceiver <-chan *Status) {
+func (m *GameMap) StartUpdateObjectPosition(statusReceiver <-chan *Status, globalMapUpdateChannel chan EmptySignal) {
 	for status := range statusReceiver {
 		if status.Type == STATUS_TYPE_USER {
 			if m.isOutOfRange(&status.CurrentPosition) {
@@ -80,9 +81,8 @@ func (m *GameMap) StartUpdateObjectPosition(statusReceiver <-chan *Status) {
 						GlobalUserStatuses.UserStatuses[status.Id].ItemEffect = SHORTEN
 					}
 				} else {
-					continue
+					log.Fatal("invalid occupied object found")
 				}
-
 			}
 			// 이 currentPosition은 서버에 저장된 user의 위치 정보로, userStatus.CurrentPosition과는 다른 값이다.
 			currentPosition, exists := GlobalUserStatuses.GetUserPosition(status.Id)
@@ -105,6 +105,8 @@ func (m *GameMap) StartUpdateObjectPosition(statusReceiver <-chan *Status) {
 		} else if status.Type == STATUS_TYPE_COIN {
 			m.MoveCoinsRandomly()
 		}
+
+		globalMapUpdateChannel <- Signal
 	}
 }
 

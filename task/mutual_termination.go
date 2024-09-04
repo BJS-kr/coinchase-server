@@ -6,7 +6,6 @@ import (
 	"multiplayer_server/worker_pool"
 )
 
-// TODO 관련있는 goroutine들을 끝낼 땐 context를 쓰자
 func CollectWorkerForMutualTermination(worker *worker_pool.Worker, mutualCancel context.CancelFunc) func() {
 	return func() {
 		if r := recover(); r != nil {

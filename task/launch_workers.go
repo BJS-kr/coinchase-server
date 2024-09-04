@@ -2,6 +2,7 @@ package task
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"multiplayer_server/global"
@@ -12,6 +13,8 @@ import (
 
 	"github.com/google/uuid"
 )
+
+const WORKER_INIT_TIMEOUT_SEC = time.Second * 3
 
 // statusChannel을 인자로 받는 이유
 // status update는 성능 최적화와 가독성을 위해 mutex 사용을 최소화해야한다.
@@ -27,34 +30,37 @@ func LaunchWorkers(workerCount int, statusChannel chan *global.Status) {
 	}
 
 	for workerId := 0; workerId < workerCount; workerId++ {
-		// Add를 워커 시작전에 호출하는 이유는 Done이 Add보다 먼저 호출되는 경우를 막기 위해서이다.
-		initWorker.Add(2)
+		initWorker.Add(1)
 
 		tcpListener := MakeTCPListener()
 		port := tcpListener.Addr().(*net.TCPAddr).Port
 		worker := workerPool.MakeWorker(port)
 
+		broadcastUpdateChannel := make(chan global.EmptySignal)
 		mutualTerminationContext, mutualCancel := context.WithCancel(context.Background())
 		sendMutualTerminationSignal := CollectWorkerForMutualTermination(worker, mutualCancel)
-		worker.CollectedSendUserRelatedDataToClient = CollectToSendUserRelatedDataToClient(sendMutualTerminationSignal, mutualTerminationContext, time.Millisecond*100)
+
+		worker.CollectedSendUserRelatedDataToClient = CollectToSendUserRelatedDataToClient(sendMutualTerminationSignal, mutualTerminationContext, broadcastUpdateChannel)
+		worker.BroadcastUpdateChannel = broadcastUpdateChannel
+
 		workerPool.Put(uuid.New().String(), worker)
 
 		go ReceiveDataFromClient(tcpListener, statusChannel, &initWorker, sendMutualTerminationSignal, mutualTerminationContext)
 	}
 
-	workerInitializationTimeout, workerInitializationTimeoutCancel := context.WithTimeout(context.Background(), time.Second*3)
-	workerInitializationSuccessSignal := make(chan bool)
+	workerInitializationTimeout, workerInitializationTimeoutCancel := context.WithTimeout(context.Background(), WORKER_INIT_TIMEOUT_SEC)
+	workerInitializationSuccessSignal := make(chan global.EmptySignal)
 
 	go func() {
 		defer workerInitializationTimeoutCancel()
 
 		initWorker.Wait()
-		workerInitializationSuccessSignal <- true
+		workerInitializationSuccessSignal <- global.Signal
 	}()
 
 	select {
 	case <-workerInitializationTimeout.Done():
-		panic("worker initialization did not succeeded in 3 seconds")
+		panic(fmt.Sprintf("worker initialization did not succeeded in %d seconds", WORKER_INIT_TIMEOUT_SEC/1_000_000_000))
 
 	case <-workerInitializationSuccessSignal:
 		slog.Info("worker initialization succeeded")

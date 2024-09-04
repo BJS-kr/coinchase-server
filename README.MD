@@ -27,7 +27,7 @@ TCP로 상태를 갱신 및 전파하며, protocol buffer를 사용합니다.
 1. Actor Model 적용
     * no lock to shared resource
 2. 버퍼 재사용
-3. tcp keepalive 사용
+3. 단일 tcp connection안에서 protobuf message 연속 전송
 
 ## 안전성 제고
 1. health check & revive

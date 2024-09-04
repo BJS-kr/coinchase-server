@@ -3,6 +3,7 @@ package worker_pool
 import (
 	"errors"
 	"log/slog"
+	"multiplayer_server/global"
 	"multiplayer_server/protodef"
 	"net"
 
@@ -35,15 +36,16 @@ type Worker struct {
 	OwnerUserID                          string
 	Status                               WorkerStatus
 	StatusReceiver                       <-chan *protodef.Status
-	HealthChecker                        chan bool
-	ForceExitSignal                      chan bool
-	StopClientSendSignal                 chan bool
-	CollectedSendUserRelatedDataToClient func(clientID string, clientIP *net.IP, clientPort int, stopClientSendSignal chan bool)
+	HealthChecker                        chan global.EmptySignal
+	ForceExitSignal                      chan global.EmptySignal
+	StopClientSendSignal                 chan global.EmptySignal
+	CollectedSendUserRelatedDataToClient func(clientID string, clientIP *net.IP, clientPort int, stopClientSendSignal chan global.EmptySignal)
+	BroadcastUpdateChannel               chan global.EmptySignal
 }
 
 func (w *Worker) SetClientInformation(userId string, clientIP *net.IP, clientPort int) {
 	if w.Status != PULLED_OUT {
-		w.ForceExitSignal <- true
+		w.ForceExitSignal <- global.Signal
 		slog.Debug("INVALID STATUS CHANGE: WORKER STATUS NOT \"IDLE\"")
 
 		return
@@ -57,7 +59,7 @@ func (w *Worker) SetClientInformation(userId string, clientIP *net.IP, clientPor
 
 func (w *Worker) StartSendUserRelatedDataToClient() bool {
 	if w.Status != CLIENT_INFORMATION_RECEIVED {
-		w.ForceExitSignal <- true
+		w.ForceExitSignal <- global.Signal
 		slog.Debug("INVALID STATUS CHANGE: WORKER STATUS NOT \"CLIENT_INFORMATION_RECEIVED\"")
 
 		return false
@@ -111,16 +113,16 @@ func (wp *WorkerPool) Pull() (*Worker, error) {
 	return nil, errors.New("worker currently not available")
 }
 
-func (wp *WorkerPool) Put(workerId string, worker *Worker) {
+func (wp *WorkerPool) Put(workerId string, worker *Worker) bool {
 	if worker.Status != WORKING && worker.Status != IDLE {
-		worker.ForceExitSignal <- true
+		worker.ForceExitSignal <- global.Signal
 		slog.Debug("INVALID STATUS CHANGE: WORKER STATUS NOT \"WORKING\" OR \"IDLE\"")
 
-		return
+		return false
 	}
 
 	if worker.Status == WORKING {
-		worker.StopClientSendSignal <- true
+		worker.StopClientSendSignal <- global.Signal
 	}
 
 	worker.Status = IDLE
@@ -131,6 +133,8 @@ func (wp *WorkerPool) Put(workerId string, worker *Worker) {
 	wp.Pool[workerId] = worker
 
 	slog.Info("Put Worker to pool")
+
+	return true
 }
 
 func (wp *WorkerPool) PoolSize() int {
@@ -151,9 +155,19 @@ func (wp *WorkerPool) MakeWorker(port int) *Worker {
 	return &Worker{
 		Port:                 port,
 		Status:               IDLE,
-		HealthChecker:        make(chan bool),
-		ForceExitSignal:      make(chan bool),
-		StopClientSendSignal: make(chan bool),
+		HealthChecker:        make(chan global.EmptySignal),
+		ForceExitSignal:      make(chan global.EmptySignal),
+		StopClientSendSignal: make(chan global.EmptySignal),
 		//UserID와 ClientIP와 ClientPort는 추후 워커가 유저에게 할당 될 때 설정된다.
+	}
+}
+
+func (wp *WorkerPool) BroadcastGlobalMapUpdate(globalMapUpdateChannel chan global.EmptySignal) {
+	for range globalMapUpdateChannel {
+		for _, worker := range wp.Pool {
+			if worker.Status == WORKING {
+				worker.BroadcastUpdateChannel <- global.Signal
+			}
+		}
 	}
 }

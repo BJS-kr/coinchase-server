@@ -14,16 +14,17 @@ import (
 )
 
 func NewServer() *http.ServeMux {
-	// TODO env로 빼자
 	statusChannel := make(chan *global.Status)
 	task.LaunchWorkers(worker_pool.WORKER_COUNT, statusChannel)
-
-	if workerPool := worker_pool.GetWorkerPool(); workerPool.GetAvailableWorkerCount() != worker_pool.WORKER_COUNT {
+	workerPool := worker_pool.GetWorkerPool()
+	if workerPool.GetAvailableWorkerCount() != worker_pool.WORKER_COUNT {
 		panic(fmt.Sprintf("worker pool initialization failed. initialized count: %d, expected count: %d", len(workerPool.Pool), worker_pool.WORKER_COUNT))
 	}
+	globalMapUpdateChannel := make(chan global.EmptySignal)
 
 	go task.HealthCheckAndRevive(10, statusChannel)
-	go global.GlobalGameMap.StartUpdateObjectPosition(statusChannel)
+	go global.GlobalGameMap.StartUpdateObjectPosition(statusChannel, globalMapUpdateChannel)
+	go workerPool.BroadcastGlobalMapUpdate(globalMapUpdateChannel)
 
 	global.GlobalGameMap.Map = &global.Map{
 		Rows: make([]*global.Row, global.MAP_SIZE),

@@ -31,3 +31,5 @@ type Status struct {
 	Id              string
 	CurrentPosition Position
 }
+
+type EmptySignal struct{}
