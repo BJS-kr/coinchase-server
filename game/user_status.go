@@ -2,6 +2,15 @@ package game
 
 import "coin_chase/game/item_effects"
 
+func GetUserStatuses() *UserStatuses {
+	if !userStatuses.Initialized {
+		userStatuses.StatusMap = make(map[string]*UserStatus)
+		userStatuses.Initialized = true
+	}
+
+	return &userStatuses
+}
+
 func (uss *UserStatuses) GetUserPosition(userId string) (*Position, bool) {
 	userStatus, ok := uss.StatusMap[userId]
 
@@ -35,8 +44,4 @@ func (uss *UserStatuses) SetUserPosition(userId string, X, Y int32) {
 		},
 		ResetTimer: userStatus.ResetTimer,
 	}
-}
-
-func GetUserStatuses() *UserStatuses {
-	return &userStatuses
 }

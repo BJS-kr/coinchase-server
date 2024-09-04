@@ -207,5 +207,25 @@ func (m *GameMap) MoveCoinsRandomly() {
 }
 
 func GetGameMap() *GameMap {
+	if !gameMap.Initialized {
+		gameMap.Scoreboard = make(map[string]int32)
+		gameMap.Map = Map{
+			Rows: make([]*Row, MAP_SIZE),
+		}
+
+		for i := 0; i < int(MAP_SIZE); i++ {
+			gameMap.Map.Rows[i] = &Row{
+				Cells: make([]*Cell, MAP_SIZE),
+			}
+			for j := 0; j < int(MAP_SIZE); j++ {
+				gameMap.Map.Rows[i].Cells[j] = &Cell{
+					Kind: owner_kind.GROUND,
+				}
+			}
+		}
+
+		gameMap.Initialized = true
+	}
+
 	return &gameMap
 }

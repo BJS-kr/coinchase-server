@@ -2,6 +2,7 @@ package client
 
 import (
 	"bytes"
+
 	"coin_chase/game"
 	"coin_chase/protodef"
 	"context"
@@ -72,12 +73,12 @@ func ReceiveDataFromClient(tcpListener *net.TCPListener, statusSender chan<- *ga
 			// 고려사항에 ring buffer가 있었으나, container/ring이 성능적으로 더 나은지 테스트를 해보지 않아 일단 직관적인 구현
 			size, err := conn.Read(buffer)
 
-			if size >= BUFFER_SIZE {
-				log.Fatal("received TCP packet size exceeded the buffer size")
-			}
-
 			if err != nil {
 				log.Fatal("Read from TCP connection failed\n" + err.Error())
+			}
+
+			if size >= BUFFER_SIZE {
+				log.Fatal("received TCP packet size exceeded the buffer size")
 			}
 
 			if size > 0 {
@@ -113,6 +114,7 @@ func ReceiveDataFromClient(tcpListener *net.TCPListener, statusSender chan<- *ga
 					statusSender <- userStatus
 				}
 
+				// 0 이상의 패킷 수신마다 갱신
 				conn.SetReadDeadline(time.Now().Add(READ_DEADLINE))
 			}
 

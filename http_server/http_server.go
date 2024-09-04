@@ -2,7 +2,6 @@ package http_server
 
 import (
 	"coin_chase/game"
-	"coin_chase/game/owner_kind"
 	"coin_chase/worker_pool"
 	"fmt"
 	"io"
@@ -13,48 +12,11 @@ import (
 	"strings"
 )
 
-func NewServer(initWorkerCount, maximumWorkerCount int) *http.ServeMux {
-	statusChannel := make(chan *game.Status)
-	worker_pool.LaunchWorkers(initWorkerCount, statusChannel, maximumWorkerCount)
-	workerPool := worker_pool.GetWorkerPool()
-
-	if workerPool.GetAvailableWorkerCount() != initWorkerCount {
-		panic(fmt.Sprintf("worker pool initialization failed. initialized count: %d, expected count: %d", len(workerPool.Pool), initWorkerCount))
-	}
-
-	gameMapUpdateChannel := make(chan game.EmptySignal)
-
-	go worker_pool.HealthCheckAndRevive(10, statusChannel, maximumWorkerCount)
-
-	gameMap, userStatuses := game.GetGameMap(), game.GetUserStatuses()
-
-	go gameMap.StartUpdateObjectPosition(statusChannel, gameMapUpdateChannel)
-	go workerPool.BroadcastgameMapUpdate(gameMapUpdateChannel)
-
-	gameMap.Scoreboard = make(map[string]int32)
-	gameMap.Map = &game.Map{
-		Rows: make([]*game.Row, game.MAP_SIZE),
-	}
-
-	for i := 0; i < int(game.MAP_SIZE); i++ {
-		gameMap.Map.Rows[i] = &game.Row{
-			Cells: make([]*game.Cell, game.MAP_SIZE),
-		}
-		for j := 0; j < int(game.MAP_SIZE); j++ {
-			gameMap.Map.Rows[i].Cells[j] = &game.Cell{
-				Kind: owner_kind.GROUND,
-			}
-		}
-	}
-
-	gameMap.InitializeCoins()
-	gameMap.InitializeItems()
-
-	go game.SendCoinMoveSignalIntervally(statusChannel, 500)
-
-	userStatuses.StatusMap = make(map[string]*game.UserStatus)
-
+func NewServer() *http.ServeMux {
+	// TODO gameMap을 가져오는 이유가 scoreBoard 때문인데 뭔가 부자연스러운듯..?
+	gameMap := game.GetGameMap()
 	server := http.NewServeMux()
+
 	server.HandleFunc("GET /get-worker-port/{userId}/{clientPort}", func(w http.ResponseWriter, r *http.Request) {
 		userId := r.PathValue("userId")
 		// client port는 request에서 얻을 수 없다. 여기서 수령하는 포트는 클라이언트의 TCP 리스닝 포트이기 때문이다.
@@ -89,6 +51,7 @@ func NewServer(initWorkerCount, maximumWorkerCount int) *http.ServeMux {
 		io.WriteString(w, fmt.Sprintf("%d", worker.Port))
 
 		worker.StartSendUserRelatedDataToClient()
+		// TODO 이건 SetClientInformation에 포함되는게 훨씬 자연스럽지 않나? 다른 모듈의 값을 직접 변경하는건 bad practice인듯?
 		gameMap.Scoreboard[userId] = 0 // 굳이 zero value를 할당하는 이유는 0점이라도 표시가 되어야하기 때문
 	})
 
@@ -105,13 +68,14 @@ func NewServer(initWorkerCount, maximumWorkerCount int) *http.ServeMux {
 		}
 
 		workerPool.Put(workerId, worker)
+		// TODO http_server에서 직접 gameMap.ScoreBoard를 참조하는게 말이 안되는 듯..
 		delete(gameMap.Scoreboard, userId)
 
 		w.WriteHeader(http.StatusOK)
 		io.WriteString(w, "worker successfully returned to pool")
 	})
 
-	// 서버 상태를 조회하기 위한 간단한 핸들러
+	// 단순히 서버 상태를 조회하는 경로
 	server.HandleFunc("GET /server-state", func(w http.ResponseWriter, r *http.Request) {
 		workerPool := worker_pool.GetWorkerPool()
 		workerCount := workerPool.GetAvailableWorkerCount()

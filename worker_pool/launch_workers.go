@@ -64,7 +64,7 @@ func LaunchWorkers(workerCount int, statusChannel chan *game.Status, maximumWork
 		panic(fmt.Sprintf("worker initialization did not succeeded in %d seconds", WORKER_INIT_TIMEOUT_SEC/1_000_000_000))
 
 	case <-workerInitializationSuccessSignal:
-		slog.Info("worker initialization succeeded")
 		close(workerInitializationSuccessSignal)
+		slog.Info("worker initialization succeeded")
 	}
 }

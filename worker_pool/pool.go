@@ -5,37 +5,7 @@ import (
 	"coin_chase/worker_pool/worker_status"
 	"errors"
 	"log/slog"
-	"net"
 )
-
-func (w *Worker) SetClientInformation(userId string, clientIP *net.IP, clientPort int) {
-	if w.Status != worker_status.PULLED_OUT {
-		w.ForceExitSignal <- game.Signal
-		slog.Debug("INVALID STATUS CHANGE: WORKER STATUS NOT \"IDLE\"")
-
-		return
-	}
-
-	w.Status = worker_status.CLIENT_INFORMATION_RECEIVED
-	w.OwnerUserID = userId
-	w.ClientIP = clientIP
-	w.ClientPort = clientPort
-}
-
-func (w *Worker) StartSendUserRelatedDataToClient() bool {
-	if w.Status != worker_status.CLIENT_INFORMATION_RECEIVED {
-		w.ForceExitSignal <- game.Signal
-		slog.Debug("INVALID STATUS CHANGE: WORKER STATUS NOT \"CLIENT_INFORMATION_RECEIVED\"")
-
-		return false
-	}
-
-	w.Status = worker_status.WORKING
-
-	go w.CollectedSendUserRelatedDataToClient(w.OwnerUserID, w.ClientIP, w.ClientPort, w.StopClientSendSignal)
-
-	return true
-}
 
 func GetWorkerPool() *WorkerPool {
 	if !workerPool.Initialized {
@@ -78,12 +48,12 @@ func (wp *WorkerPool) Pull() (*Worker, error) {
 	return nil, errors.New("worker currently not available")
 }
 
-func (wp *WorkerPool) Put(workerId string, worker *Worker) bool {
+func (wp *WorkerPool) Put(workerId string, worker *Worker) error {
 	if worker.Status != worker_status.WORKING && worker.Status != worker_status.IDLE {
 		worker.ForceExitSignal <- game.Signal
 		slog.Debug("INVALID STATUS CHANGE: WORKER STATUS NOT \"WORKING\" OR \"IDLE\"")
 
-		return false
+		return errors.New("INVALID STATUS CHANGE: WORKER STATUS NOT \"WORKING\" OR \"IDLE\"")
 	}
 
 	if worker.Status == worker_status.WORKING {
@@ -99,7 +69,7 @@ func (wp *WorkerPool) Put(workerId string, worker *Worker) bool {
 
 	slog.Info("Put Worker to pool")
 
-	return true
+	return nil
 }
 
 func (wp *WorkerPool) PoolSize() int {
@@ -126,8 +96,8 @@ func (wp *WorkerPool) MakeWorker(port int) *Worker {
 	}
 }
 
-func (wp *WorkerPool) BroadcastgameMapUpdate(gameMapUpdateChannel chan game.EmptySignal) {
-	for range gameMapUpdateChannel {
+func (wp *WorkerPool) BroadcastSignal(broadcastChannel chan game.EmptySignal) {
+	for range broadcastChannel {
 		for _, worker := range wp.Pool {
 			if worker.Status == worker_status.WORKING {
 				worker.BroadcastUpdateChannel <- game.Signal
