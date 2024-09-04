@@ -1,11 +1,9 @@
-package global
+package game
 
-type UserStatuses struct {
-	UserStatuses map[string]*UserStatus
-}
+import "coin_chase/game/item_effects"
 
 func (uss *UserStatuses) GetUserPosition(userId string) (*Position, bool) {
-	userStatus, ok := uss.UserStatuses[userId]
+	userStatus, ok := uss.StatusMap[userId]
 
 	if !ok {
 		return nil, ok
@@ -15,11 +13,11 @@ func (uss *UserStatuses) GetUserPosition(userId string) (*Position, bool) {
 }
 
 func (uss *UserStatuses) SetUserPosition(userId string, X, Y int32) {
-	userStatus, ok := uss.UserStatuses[userId]
+	userStatus, ok := uss.StatusMap[userId]
 
 	if !ok {
-		uss.UserStatuses[userId] = &UserStatus{
-			ItemEffect: NONE,
+		uss.StatusMap[userId] = &UserStatus{
+			ItemEffect: item_effects.NONE,
 			Position: &Position{
 				X: X,
 				Y: Y,
@@ -29,7 +27,7 @@ func (uss *UserStatuses) SetUserPosition(userId string, X, Y int32) {
 		return
 	}
 
-	uss.UserStatuses[userId] = &UserStatus{
+	uss.StatusMap[userId] = &UserStatus{
 		ItemEffect: userStatus.ItemEffect,
 		Position: &Position{
 			X: X,
@@ -37,4 +35,8 @@ func (uss *UserStatuses) SetUserPosition(userId string, X, Y int32) {
 		},
 		ResetTimer: userStatus.ResetTimer,
 	}
+}
+
+func GetUserStatuses() *UserStatuses {
+	return &userStatuses
 }

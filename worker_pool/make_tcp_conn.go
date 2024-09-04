@@ -1,4 +1,4 @@
-package task
+package worker_pool
 
 import "net"
 

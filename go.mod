@@ -1,4 +1,4 @@
-module multiplayer_server
+module coin_chase 
 
 go 1.22.0
 

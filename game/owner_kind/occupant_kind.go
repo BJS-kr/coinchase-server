@@ -1,0 +1,10 @@
+package owner_kind
+
+const (
+	UNKNOWN = iota
+	USER
+	COIN
+	ITEM_LENGTHEN_VISION
+	ITEM_SHORTEN_VISION
+	GROUND
+)

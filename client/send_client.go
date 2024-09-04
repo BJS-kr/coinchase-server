@@ -1,21 +1,21 @@
-package task
+package client
 
 import (
+	"coin_chase/game"
+	"coin_chase/protodef"
 	"context"
 	"fmt"
 	"log"
 	"log/slog"
-	"multiplayer_server/global"
-	"multiplayer_server/protodef"
 	"net"
 
 	"github.com/golang/snappy"
 	"google.golang.org/protobuf/proto"
 )
 
-func CollectToSendUserRelatedDataToClient(sendMutualTerminationSignal func(), mutualTerminationContext context.Context, broadcastUpdateChannel chan global.EmptySignal) func(clientID string, clientIP *net.IP, clientPort int, stopClientSendSignal chan global.EmptySignal) {
+func CollectToSendUserRelatedDataToClient(sendMutualTerminationSignal func(), mutualTerminationContext context.Context, broadcastUpdateChannel chan game.EmptySignal) func(clientID string, clientIP *net.IP, clientPort int, stopClientSendSignal chan game.EmptySignal) {
 	// 먼저 공통의 자원을 수집하기 위해 deferred execution으로 처리
-	return func(clientId string, clientIP *net.IP, clientPort int, stopClientSendSignal chan global.EmptySignal) {
+	return func(clientId string, clientIP *net.IP, clientPort int, stopClientSendSignal chan game.EmptySignal) {
 		defer sendMutualTerminationSignal()
 		clientAddr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%d", clientIP.String(), clientPort))
 
@@ -44,19 +44,20 @@ func CollectToSendUserRelatedDataToClient(sendMutualTerminationSignal func(), mu
 				slog.Info("stop client send signal received")
 				return
 			case <-broadcastUpdateChannel:
-				userStatus, ok := global.GlobalUserStatuses.UserStatuses[clientId]
+				gameMap, userStatuses := game.GetGameMap(), game.GetUserStatuses()
+				userStatus, ok := userStatuses.StatusMap[clientId]
 
 				if !ok {
 					continue
 				}
 
-				relatedPositions := global.GlobalGameMap.GetRelatedPositions(userStatus.Position, int32(userStatus.ItemEffect))
+				relatedPositions := gameMap.GetRelatedPositions(userStatus.Position, int32(userStatus.ItemEffect))
 				protoUserPosition := &protodef.Position{
 					X: userStatus.Position.X,
 					Y: userStatus.Position.Y,
 				}
-
 				protoRelatedPositions := make([]*protodef.RelatedPosition, 0)
+
 				for _, relatedPosition := range relatedPositions {
 					protoCell := &protodef.Cell{
 						Occupied: relatedPosition.Cell.Occupied,
@@ -76,7 +77,7 @@ func CollectToSendUserRelatedDataToClient(sendMutualTerminationSignal func(), mu
 				protoUserRelatedPositions := &protodef.RelatedPositions{
 					UserPosition:     protoUserPosition,
 					RelatedPositions: protoRelatedPositions,
-					Scoreboard:       global.GlobalGameMap.Scoreboard,
+					Scoreboard:       gameMap.Scoreboard,
 				}
 
 				marshaledProtoUserRelatedPositions, err := proto.Marshal(protoUserRelatedPositions)

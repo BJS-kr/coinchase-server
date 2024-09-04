@@ -1,4 +1,4 @@
-package global
+package game
 
 import "math/rand/v2"
 

@@ -1,11 +1,17 @@
 package main
 
 import (
+	"coin_chase/http_server"
 	"log"
 	"log/slog"
-	"multiplayer_server/server"
 	"net/http"
 	"os"
+)
+
+const PORT = ":8888"
+const (
+	INIT_WORKER_COUNT    = 10
+	MAXIMUM_WORKER_COUNT = 10
 )
 
 func main() {
@@ -14,7 +20,7 @@ func main() {
 	slog.SetDefault(slog.New(h))
 	programLevel.Set(slog.LevelDebug)
 	// initializeWorkers
-	gameServer := server.NewServer()
+	gameServer := http_server.NewServer(INIT_WORKER_COUNT, MAXIMUM_WORKER_COUNT)
 
-	log.Fatal(http.ListenAndServe(":8888", gameServer))
+	log.Fatal(http.ListenAndServe(PORT, gameServer))
 }

@@ -1,13 +1,13 @@
-package task
+package client
 
 import (
 	"bytes"
+	"coin_chase/game"
+	"coin_chase/protodef"
 	"context"
 	"errors"
 	"io"
 	"log"
-	"multiplayer_server/global"
-	"multiplayer_server/protodef"
 	"time"
 
 	"net"
@@ -28,7 +28,7 @@ const READ_DEADLINE = time.Second * 300
 const BUFFER_SIZE = 4096
 const BUFFER_DELIMITER byte = '$'
 
-func ReceiveDataFromClient(tcpListener *net.TCPListener, statusSender chan<- *global.Status, initWorker *sync.WaitGroup, sendMutualTerminationSignal func(), mutualTerminationContext context.Context) {
+func ReceiveDataFromClient(tcpListener *net.TCPListener, statusSender chan<- *game.Status, initWorker *sync.WaitGroup, sendMutualTerminationSignal func(), mutualTerminationContext context.Context) {
 	defer sendMutualTerminationSignal()
 	defer tcpListener.Close()
 
@@ -101,10 +101,10 @@ func ReceiveDataFromClient(tcpListener *net.TCPListener, statusSender chan<- *gl
 						log.Fatal("TCP unmarshal failed\n" + err.Error())
 					}
 
-					userStatus := &global.Status{
-						Type: global.STATUS_TYPE_USER,
+					userStatus := &game.Status{
+						Type: game.STATUS_TYPE_USER,
 						Id:   protoStatus.Id,
-						CurrentPosition: global.Position{
+						CurrentPosition: game.Position{
 							X: protoStatus.CurrentPosition.X,
 							Y: protoStatus.CurrentPosition.Y,
 						},

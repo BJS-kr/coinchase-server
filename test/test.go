@@ -1,23 +1,13 @@
 package test
 
-// 프로그램의 random배치 특성상 유저의 정확한 순위 등을 예측하기는 어렵다.
-// 프로젝트의 목적 자체에 가까운 high throughput, small packet size, synchronization등을 테스트한다.
-
-// 유일하게 명시적으로 확인이 가능한 부분은 클라이언트 송신(send_client.go)이 100회 이상 실패시 terminate되는 부분이다.
-// 이 부분 또한 추상화 되어 상술한 유효성 검사 하위에서 돌아가므로, 기능이 정상적으로 동작함을 확인했다.
-// 또 한 각 자원(워커 및 그에 관련된 하위 goroutine들)의 생성 및 종료가 일원화 되어있는데,
-// 워커의 반환은 테스트하지만 워커의 하위 자원들의 회수까지 테스트하지 않는다.
-// 이러한 이유로, 이 테스트는 단순히 동시성 처리가 가능한 서버의 동작 여부를 확인하는 것에 가깝다.
-// 이러한 테스트의 단점을 커버하기 위해, 실제로 클라이언트 프로그램(데스트탑 앱)을 작성해 테스트를 진행했다.
 import (
+	"coin_chase/game"
+	"coin_chase/http_server"
+	"coin_chase/protodef"
+	"coin_chase/worker_pool"
 	"encoding/json"
 	"fmt"
 	"io"
-
-	"multiplayer_server/global"
-	"multiplayer_server/protodef"
-	"multiplayer_server/server"
-	"multiplayer_server/worker_pool"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -30,6 +20,15 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// 프로그램의 random배치 특성상 유저의 정확한 순위 등을 예측하기는 어렵다.
+// 프로젝트의 목적 자체에 가까운 high throughput, small packet size, synchronization등을 테스트한다.
+
+// 유일하게 명시적으로 확인이 가능한 부분은 클라이언트 송신(send_client.go)이 100회 이상 실패시 terminate되는 부분이다.
+// 이 부분 또한 추상화 되어 상술한 유효성 검사 하위에서 돌아가므로, 기능이 정상적으로 동작함을 확인했다.
+// 또 한 각 자원(워커 및 그에 관련된 하위 goroutine들)의 생성 및 종료가 일원화 되어있는데,
+// 워커의 반환은 테스트하지만 워커의 하위 자원들의 회수까지 테스트하지 않는다.
+// 이러한 이유로, 이 테스트는 단순히 동시성 처리가 가능한 서버의 동작 여부를 확인하는 것에 가깝다.
+// 이러한 테스트의 단점을 커버하기 위해, 실제로 클라이언트 프로그램(데스트탑 앱)을 작성해 테스트를 진행했다.
 type TestClient struct {
 	ID         string
 	Conn       *net.UDPConn
@@ -44,7 +43,7 @@ var (
 
 func TestMain(m *testing.M) {
 	clientListeners = make([]*TestClient, 0)
-	testServer = httptest.NewServer(server.NewServer())
+	testServer = httptest.NewServer(http_server.NewServer())
 
 	defer testServer.Close()
 
@@ -79,14 +78,15 @@ func TestInitialResources(t *testing.T) {
 	})
 	// 기본 자원(map, coin, item) 생성 및 자원 갯수 검사
 	t.Run("기본 자원 생성(맵, 코인, 아이템)", func(t *testing.T) {
+		gameMap := game.GetGameMap()
 		// 코인 검사(자원이 맵에 뿌려졌다는 것 자체가 맵이 잘 생성되었다는 것)
-		if coinCount > global.COIN_COUNT || coinCount == 0 { // <= 조건인 이유는 코인은 랜덤성을 위하여 중복된 위치가 선정될 경우 그냥 스킵해버리기 때문에 COIN_COUNT보다 적게 생성될 수도 있다.
-			t.Fatalf("coin count is not correct. expected: %d, got: %d", global.COIN_COUNT, len(global.GlobalGameMap.Coins))
+		if coinCount > game.COIN_COUNT || coinCount == 0 { // <= 조건인 이유는 코인은 랜덤성을 위하여 중복된 위치가 선정될 경우 그냥 스킵해버리기 때문에 COIN_COUNT보다 적게 생성될 수도 있다.
+			t.Fatalf("coin count is not correct. expected: %d, got: %d", game.COIN_COUNT, len(gameMap.Coins))
 		}
 
 		// 아이템 검사
-		if itemCount != global.ITEM_COUNT { // 코인과 다르게 아이템은 무조건 ITEM_COUNT만큼 생성되어야 한다.
-			t.Fatalf("item count is not correct. expected: %d, got: %d", global.ITEM_COUNT, len(global.GlobalGameMap.RandomItems))
+		if itemCount != game.ITEM_COUNT { // 코인과 다르게 아이템은 무조건 ITEM_COUNT만큼 생성되어야 한다.
+			t.Fatalf("item count is not correct. expected: %d, got: %d", game.ITEM_COUNT, len(gameMap.RandomItems))
 		}
 	})
 }
@@ -183,8 +183,8 @@ func TestPlay(t *testing.T) {
 					// 서버가 애초에 out of bound 혹은 이미 점거된 위치에 대한 판단을 서버가 알아서 진행하므로, 유효하지 않은 위치를 계산하지 않고
 					// 클라이언트의 랜덤 포지션을 그대로 전송한다. 이 방법으로도 데이터에 대한 경합성 해결, 요청 무효화 등의 테스트는 가능하다.
 					newUserPosition := &protodef.Position{
-						X: userPosition.X + global.GenerateRandomDirection(),
-						Y: userPosition.Y + global.GenerateRandomDirection(),
+						X: userPosition.X + game.GenerateRandomDirection(),
+						Y: userPosition.Y + game.GenerateRandomDirection(),
 					}
 
 					userStatus := &protodef.Status{

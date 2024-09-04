@@ -1,54 +1,58 @@
-package server
+package http_server
 
 import (
+	"coin_chase/game"
+	"coin_chase/game/owner_kind"
+	"coin_chase/worker_pool"
 	"fmt"
 	"io"
 	"log/slog"
-	"multiplayer_server/global"
-	"multiplayer_server/task"
-	"multiplayer_server/worker_pool"
 	"net"
 	"net/http"
 	"strconv"
 	"strings"
 )
 
-func NewServer() *http.ServeMux {
-	statusChannel := make(chan *global.Status)
-	task.LaunchWorkers(worker_pool.WORKER_COUNT, statusChannel)
+func NewServer(initWorkerCount, maximumWorkerCount int) *http.ServeMux {
+	statusChannel := make(chan *game.Status)
+	worker_pool.LaunchWorkers(initWorkerCount, statusChannel, maximumWorkerCount)
 	workerPool := worker_pool.GetWorkerPool()
-	if workerPool.GetAvailableWorkerCount() != worker_pool.WORKER_COUNT {
-		panic(fmt.Sprintf("worker pool initialization failed. initialized count: %d, expected count: %d", len(workerPool.Pool), worker_pool.WORKER_COUNT))
-	}
-	globalMapUpdateChannel := make(chan global.EmptySignal)
 
-	go task.HealthCheckAndRevive(10, statusChannel)
-	go global.GlobalGameMap.StartUpdateObjectPosition(statusChannel, globalMapUpdateChannel)
-	go workerPool.BroadcastGlobalMapUpdate(globalMapUpdateChannel)
-
-	global.GlobalGameMap.Map = &global.Map{
-		Rows: make([]*global.Row, global.MAP_SIZE),
+	if workerPool.GetAvailableWorkerCount() != initWorkerCount {
+		panic(fmt.Sprintf("worker pool initialization failed. initialized count: %d, expected count: %d", len(workerPool.Pool), initWorkerCount))
 	}
 
-	for i := 0; i < int(global.MAP_SIZE); i++ {
-		global.GlobalGameMap.Map.Rows[i] = &global.Row{
-			Cells: make([]*global.Cell, global.MAP_SIZE),
+	gameMapUpdateChannel := make(chan game.EmptySignal)
+
+	go worker_pool.HealthCheckAndRevive(10, statusChannel, maximumWorkerCount)
+
+	gameMap, userStatuses := game.GetGameMap(), game.GetUserStatuses()
+
+	go gameMap.StartUpdateObjectPosition(statusChannel, gameMapUpdateChannel)
+	go workerPool.BroadcastgameMapUpdate(gameMapUpdateChannel)
+
+	gameMap.Scoreboard = make(map[string]int32)
+	gameMap.Map = &game.Map{
+		Rows: make([]*game.Row, game.MAP_SIZE),
+	}
+
+	for i := 0; i < int(game.MAP_SIZE); i++ {
+		gameMap.Map.Rows[i] = &game.Row{
+			Cells: make([]*game.Cell, game.MAP_SIZE),
 		}
-		for j := 0; j < int(global.MAP_SIZE); j++ {
-			global.GlobalGameMap.Map.Rows[i].Cells[j] = &global.Cell{
-				Kind: global.GROUND,
+		for j := 0; j < int(game.MAP_SIZE); j++ {
+			gameMap.Map.Rows[i].Cells[j] = &game.Cell{
+				Kind: owner_kind.GROUND,
 			}
 		}
 	}
 
-	// coin관련
-	global.GlobalGameMap.InitializeCoins()
-	global.GlobalGameMap.InitializeItems()
-	// interval하게 실행됨
-	go task.SendCoinMoveSignalIntervally(statusChannel, 500)
+	gameMap.InitializeCoins()
+	gameMap.InitializeItems()
 
-	global.GlobalUserStatuses.UserStatuses = make(map[string]*global.UserStatus)
-	global.GlobalGameMap.Scoreboard = make(map[string]int32)
+	go game.SendCoinMoveSignalIntervally(statusChannel, 500)
+
+	userStatuses.StatusMap = make(map[string]*game.UserStatus)
 
 	server := http.NewServeMux()
 	server.HandleFunc("GET /get-worker-port/{userId}/{clientPort}", func(w http.ResponseWriter, r *http.Request) {
@@ -85,7 +89,7 @@ func NewServer() *http.ServeMux {
 		io.WriteString(w, fmt.Sprintf("%d", worker.Port))
 
 		worker.StartSendUserRelatedDataToClient()
-		global.GlobalGameMap.Scoreboard[userId] = 0 // 굳이 zero value를 할당하는 이유는 0점이라도 표시가 되어야하기 때문
+		gameMap.Scoreboard[userId] = 0 // 굳이 zero value를 할당하는 이유는 0점이라도 표시가 되어야하기 때문
 	})
 
 	server.HandleFunc("PATCH /disconnect/{userId}", func(w http.ResponseWriter, r *http.Request) {
@@ -101,7 +105,7 @@ func NewServer() *http.ServeMux {
 		}
 
 		workerPool.Put(workerId, worker)
-		delete(global.GlobalGameMap.Scoreboard, userId)
+		delete(gameMap.Scoreboard, userId)
 
 		w.WriteHeader(http.StatusOK)
 		io.WriteString(w, "worker successfully returned to pool")
@@ -111,8 +115,8 @@ func NewServer() *http.ServeMux {
 	server.HandleFunc("GET /server-state", func(w http.ResponseWriter, r *http.Request) {
 		workerPool := worker_pool.GetWorkerPool()
 		workerCount := workerPool.GetAvailableWorkerCount()
-		coinCount := len(global.GlobalGameMap.Coins)
-		itemCount := len(global.GlobalGameMap.RandomItems)
+		coinCount := len(gameMap.Coins)
+		itemCount := len(gameMap.RandomItems)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)

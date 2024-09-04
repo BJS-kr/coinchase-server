@@ -1,34 +1,15 @@
 // mutex의 대부분을 없앨 수 있을 것 같다.
-package global
+package game
 
 import (
+	"coin_chase/game/item_effects"
+	"coin_chase/game/owner_kind"
 	"log"
 	"log/slog"
 	"math/rand/v2"
 	"slices"
 	"time"
 )
-
-type Cell struct {
-	Occupied bool
-	Owner    string
-	Kind     TileKind
-}
-
-type Row struct {
-	Cells []*Cell
-}
-
-type Map struct {
-	Rows []*Row
-}
-
-type GameMap struct {
-	Map         *Map
-	Coins       []*Position
-	RandomItems []*Position
-	Scoreboard  map[string]int32
-}
 
 func (m *GameMap) StartUpdateObjectPosition(statusReceiver <-chan *Status, globalMapUpdateChannel chan EmptySignal) {
 	for status := range statusReceiver {
@@ -39,7 +20,7 @@ func (m *GameMap) StartUpdateObjectPosition(statusReceiver <-chan *Status, globa
 
 			if m.isOccupied(&status.CurrentPosition) {
 				kind := m.Map.Rows[status.CurrentPosition.Y].Cells[status.CurrentPosition.X].Kind
-				if kind == COIN {
+				if kind == owner_kind.COIN {
 					// lock을 얻었으니 MoveCoinsRandomly가 Lock을 얻지 못하고 대기해야하므로, 이곳에서의 정합성은 만족된다.
 					coinIdx := slices.IndexFunc(m.Coins, func(coinPosition *Position) bool {
 						return coinPosition.X == status.CurrentPosition.X && coinPosition.Y == status.CurrentPosition.Y
@@ -52,13 +33,13 @@ func (m *GameMap) StartUpdateObjectPosition(statusReceiver <-chan *Status, globa
 					}
 
 					m.Scoreboard[status.Id] += 1
-				} else if kind == ITEM_LENGTHEN_VISION || kind == ITEM_SHORTEN_VISION {
-					if GlobalUserStatuses.UserStatuses[status.Id].ResetTimer != nil {
-						GlobalUserStatuses.UserStatuses[status.Id].ResetTimer.Stop()
+				} else if kind == owner_kind.ITEM_LENGTHEN_VISION || kind == owner_kind.ITEM_SHORTEN_VISION {
+					if userStatuses.StatusMap[status.Id].ResetTimer != nil {
+						userStatuses.StatusMap[status.Id].ResetTimer.Stop()
 					}
 
-					GlobalUserStatuses.UserStatuses[status.Id].ResetTimer = time.AfterFunc(time.Second*6, func() {
-						GlobalUserStatuses.UserStatuses[status.Id].ItemEffect = NONE
+					userStatuses.StatusMap[status.Id].ResetTimer = time.AfterFunc(time.Second*6, func() {
+						userStatuses.StatusMap[status.Id].ItemEffect = item_effects.NONE
 					})
 					itemIdx := slices.IndexFunc(m.RandomItems, func(itemPosition *Position) bool {
 						return itemPosition.X == status.CurrentPosition.X && itemPosition.Y == status.CurrentPosition.Y
@@ -74,33 +55,33 @@ func (m *GameMap) StartUpdateObjectPosition(statusReceiver <-chan *Status, globa
 						m.InitializeItems()
 					}
 
-					if kind == ITEM_LENGTHEN_VISION {
+					if kind == owner_kind.ITEM_LENGTHEN_VISION {
 						// UserStatuses를 변조하고 있으나, 변조하는 스레드들이 각자 RWMutexMap의 Lock을 얻어야하므로 상관없다.
-						GlobalUserStatuses.UserStatuses[status.Id].ItemEffect = LENGTHEN
-					} else if kind == ITEM_SHORTEN_VISION {
-						GlobalUserStatuses.UserStatuses[status.Id].ItemEffect = SHORTEN
+						userStatuses.StatusMap[status.Id].ItemEffect = item_effects.LENGTHEN
+					} else if kind == owner_kind.ITEM_SHORTEN_VISION {
+						userStatuses.StatusMap[status.Id].ItemEffect = item_effects.SHORTEN
 					}
 				} else {
 					log.Fatal("invalid occupied object found")
 				}
 			}
 			// 이 currentPosition은 서버에 저장된 user의 위치 정보로, userStatus.CurrentPosition과는 다른 값이다.
-			currentPosition, exists := GlobalUserStatuses.GetUserPosition(status.Id)
+			currentPosition, exists := userStatuses.GetUserPosition(status.Id)
 
 			if exists {
 				m.Map.Rows[currentPosition.Y].Cells[currentPosition.X] = &Cell{
 					Occupied: false,
 					Owner:    "",
-					Kind:     GROUND,
+					Kind:     owner_kind.GROUND,
 				}
 			}
 
-			GlobalUserStatuses.SetUserPosition(status.Id, status.CurrentPosition.X, status.CurrentPosition.Y)
+			userStatuses.SetUserPosition(status.Id, status.CurrentPosition.X, status.CurrentPosition.Y)
 
 			m.Map.Rows[status.CurrentPosition.Y].Cells[status.CurrentPosition.X] = &Cell{
 				Occupied: true,
 				Owner:    status.Id,
-				Kind:     USER,
+				Kind:     owner_kind.USER,
 			}
 		} else if status.Type == STATUS_TYPE_COIN {
 			m.MoveCoinsRandomly()
@@ -167,9 +148,9 @@ func (m *GameMap) InitializeItems() {
 		}
 
 		if GenerateRandomDirection() == 1 {
-			itemCell.Kind = ITEM_LENGTHEN_VISION
+			itemCell.Kind = owner_kind.ITEM_LENGTHEN_VISION
 		} else {
-			itemCell.Kind = ITEM_SHORTEN_VISION
+			itemCell.Kind = owner_kind.ITEM_SHORTEN_VISION
 		}
 
 		m.Map.Rows[y].Cells[x] = itemCell
@@ -188,7 +169,7 @@ func (m *GameMap) InitializeCoins() {
 			m.Map.Rows[y].Cells[x] = &Cell{
 				Occupied: true,
 				Owner:    OWNER_SYSTEM,
-				Kind:     COIN,
+				Kind:     owner_kind.COIN,
 			}
 			m.Coins = append(m.Coins, &Position{
 				X: x,
@@ -212,15 +193,19 @@ func (m *GameMap) MoveCoinsRandomly() {
 		m.Map.Rows[coinPosition.Y].Cells[coinPosition.X] = &Cell{
 			Occupied: false,
 			Owner:    "",
-			Kind:     GROUND,
+			Kind:     owner_kind.GROUND,
 		}
 
 		m.Map.Rows[newPos.Y].Cells[newPos.X] = &Cell{
 			Occupied: true,
 			Owner:    OWNER_SYSTEM,
-			Kind:     COIN,
+			Kind:     owner_kind.COIN,
 		}
 
 		m.Coins[i] = newPos
 	}
+}
+
+func GetGameMap() *GameMap {
+	return &gameMap
 }

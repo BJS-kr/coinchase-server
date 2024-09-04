@@ -1,71 +1,36 @@
 package worker_pool
 
 import (
+	"coin_chase/game"
+	"coin_chase/worker_pool/worker_status"
 	"errors"
 	"log/slog"
-	"multiplayer_server/global"
-	"multiplayer_server/protodef"
 	"net"
-
-	"sync"
 )
-
-type WorkerStatus int
-
-const WORKER_COUNT = 10
-const (
-	IDLE = iota + 1
-	PULLED_OUT
-	CLIENT_INFORMATION_RECEIVED
-	WORKING
-	TERMINATED
-)
-
-type WorkerPool struct {
-	mtx         sync.Mutex
-	Pool        map[string]*Worker
-	Initialized bool
-}
-
-var workerPool WorkerPool
-
-type Worker struct {
-	ClientIP                             *net.IP
-	ClientPort                           int
-	Port                                 int
-	OwnerUserID                          string
-	Status                               WorkerStatus
-	StatusReceiver                       <-chan *protodef.Status
-	HealthChecker                        chan global.EmptySignal
-	ForceExitSignal                      chan global.EmptySignal
-	StopClientSendSignal                 chan global.EmptySignal
-	CollectedSendUserRelatedDataToClient func(clientID string, clientIP *net.IP, clientPort int, stopClientSendSignal chan global.EmptySignal)
-	BroadcastUpdateChannel               chan global.EmptySignal
-}
 
 func (w *Worker) SetClientInformation(userId string, clientIP *net.IP, clientPort int) {
-	if w.Status != PULLED_OUT {
-		w.ForceExitSignal <- global.Signal
+	if w.Status != worker_status.PULLED_OUT {
+		w.ForceExitSignal <- game.Signal
 		slog.Debug("INVALID STATUS CHANGE: WORKER STATUS NOT \"IDLE\"")
 
 		return
 	}
 
-	w.Status = CLIENT_INFORMATION_RECEIVED
+	w.Status = worker_status.CLIENT_INFORMATION_RECEIVED
 	w.OwnerUserID = userId
 	w.ClientIP = clientIP
 	w.ClientPort = clientPort
 }
 
 func (w *Worker) StartSendUserRelatedDataToClient() bool {
-	if w.Status != CLIENT_INFORMATION_RECEIVED {
-		w.ForceExitSignal <- global.Signal
+	if w.Status != worker_status.CLIENT_INFORMATION_RECEIVED {
+		w.ForceExitSignal <- game.Signal
 		slog.Debug("INVALID STATUS CHANGE: WORKER STATUS NOT \"CLIENT_INFORMATION_RECEIVED\"")
 
 		return false
 	}
 
-	w.Status = WORKING
+	w.Status = worker_status.WORKING
 
 	go w.CollectedSendUserRelatedDataToClient(w.OwnerUserID, w.ClientIP, w.ClientPort, w.StopClientSendSignal)
 
@@ -87,7 +52,7 @@ func (wp *WorkerPool) GetAvailableWorkerCount() int {
 	count := 0
 
 	for _, worker := range wp.Pool {
-		if worker.Status == IDLE {
+		if worker.Status == worker_status.IDLE {
 			count++
 		}
 	}
@@ -101,8 +66,8 @@ func (wp *WorkerPool) Pull() (*Worker, error) {
 	defer wp.mtx.Unlock()
 
 	for _, worker := range wp.Pool {
-		if worker.Status == IDLE {
-			worker.Status = PULLED_OUT
+		if worker.Status == worker_status.IDLE {
+			worker.Status = worker_status.PULLED_OUT
 
 			slog.Info("Worker Pulled Out")
 
@@ -114,18 +79,18 @@ func (wp *WorkerPool) Pull() (*Worker, error) {
 }
 
 func (wp *WorkerPool) Put(workerId string, worker *Worker) bool {
-	if worker.Status != WORKING && worker.Status != IDLE {
-		worker.ForceExitSignal <- global.Signal
+	if worker.Status != worker_status.WORKING && worker.Status != worker_status.IDLE {
+		worker.ForceExitSignal <- game.Signal
 		slog.Debug("INVALID STATUS CHANGE: WORKER STATUS NOT \"WORKING\" OR \"IDLE\"")
 
 		return false
 	}
 
-	if worker.Status == WORKING {
-		worker.StopClientSendSignal <- global.Signal
+	if worker.Status == worker_status.WORKING {
+		worker.StopClientSendSignal <- game.Signal
 	}
 
-	worker.Status = IDLE
+	worker.Status = worker_status.IDLE
 	worker.OwnerUserID = ""
 	worker.ClientIP = nil
 	worker.ClientPort = 0
@@ -154,19 +119,18 @@ func (wp *WorkerPool) GetWorkerByUserId(userId string) (string, *Worker, error) 
 func (wp *WorkerPool) MakeWorker(port int) *Worker {
 	return &Worker{
 		Port:                 port,
-		Status:               IDLE,
-		HealthChecker:        make(chan global.EmptySignal),
-		ForceExitSignal:      make(chan global.EmptySignal),
-		StopClientSendSignal: make(chan global.EmptySignal),
-		//UserID와 ClientIP와 ClientPort는 추후 워커가 유저에게 할당 될 때 설정된다.
+		Status:               worker_status.IDLE,
+		HealthChecker:        make(chan game.EmptySignal),
+		ForceExitSignal:      make(chan game.EmptySignal),
+		StopClientSendSignal: make(chan game.EmptySignal),
 	}
 }
 
-func (wp *WorkerPool) BroadcastGlobalMapUpdate(globalMapUpdateChannel chan global.EmptySignal) {
-	for range globalMapUpdateChannel {
+func (wp *WorkerPool) BroadcastgameMapUpdate(gameMapUpdateChannel chan game.EmptySignal) {
+	for range gameMapUpdateChannel {
 		for _, worker := range wp.Pool {
-			if worker.Status == WORKING {
-				worker.BroadcastUpdateChannel <- global.Signal
+			if worker.Status == worker_status.WORKING {
+				worker.BroadcastUpdateChannel <- game.Signal
 			}
 		}
 	}
