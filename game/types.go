@@ -50,12 +50,13 @@ type Map struct {
 }
 
 type GameMap struct {
-	Initialized bool
+	initialized bool
 	Map         Map
-	Coins       []*Position
-	RandomItems []*Position
-	Scoreboard  map[string]int32
+	coins       []*Position
+	randomItems []*Position
 }
+
+type Scoreboard map[string]int32
 
 type UserStatuses struct {
 	Initialized bool

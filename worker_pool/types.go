@@ -8,23 +8,24 @@ import (
 )
 
 type WorkerStatus int
-
+type Pool map[string]*Worker
 type WorkerPool struct {
-	mtx         sync.Mutex
-	Pool        map[string]*Worker
+	rwmtx       sync.RWMutex
+	Pool        Pool
 	Initialized bool
 }
 
 type Worker struct {
-	ClientIP                             *net.IP
-	ClientPort                           int
-	Port                                 int
-	OwnerUserID                          string
-	Status                               WorkerStatus
-	StatusReceiver                       <-chan *protodef.Status
-	HealthChecker                        chan game.EmptySignal
-	ForceExitSignal                      chan game.EmptySignal
-	StopClientSendSignal                 chan game.EmptySignal
-	CollectedSendUserRelatedDataToClient func(clientID string, clientIP *net.IP, clientPort int, stopClientSendSignal chan game.EmptySignal)
-	BroadcastUpdateChannel               chan game.EmptySignal
+	rwmtx                       sync.RWMutex
+	ClientIP                    *net.IP
+	ClientPort                  int
+	Port                        int
+	OwnerUserID                 string
+	status                      WorkerStatus
+	StatusReceiver              <-chan *protodef.Status
+	HealthChecker               chan game.EmptySignal
+	ForceExitSignal             chan game.EmptySignal
+	StopClientSendSignal        chan game.EmptySignal
+	SendUserRelatedDataToClient func(clientID string, clientIP *net.IP, clientPort int, stopClientSendSignal chan game.EmptySignal)
+	BroadcastUpdateChannel      chan game.EmptySignal
 }

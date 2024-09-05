@@ -1,10 +1,12 @@
-package test
+package http_server
 
 import (
 	"coin_chase/game"
-	"coin_chase/http_server"
 	"coin_chase/protodef"
-	"coin_chase/worker_pool"
+	"strings"
+	"sync"
+	"time"
+
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,9 +15,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strconv"
-	"sync"
 	"testing"
-	"time"
 
 	"google.golang.org/protobuf/proto"
 )
@@ -31,7 +31,7 @@ import (
 // 이러한 테스트의 단점을 커버하기 위해, 실제로 클라이언트 프로그램(데스트탑 앱)을 작성해 테스트를 진행했다.
 type TestClient struct {
 	ID         string
-	Conn       *net.UDPConn
+	Listener   *net.TCPListener
 	WorkerPort int
 }
 
@@ -43,7 +43,8 @@ var (
 
 func TestMain(m *testing.M) {
 	clientListeners = make([]*TestClient, 0)
-	testServer = httptest.NewServer(http_server.NewServer())
+	httpServer := NewServer(10, 10)
+	testServer = httptest.NewServer(httpServer)
 
 	defer testServer.Close()
 
@@ -72,8 +73,8 @@ func TestInitialResources(t *testing.T) {
 	coinCount := int(serverState["coinCount"].(float64))
 	itemCount := int(serverState["itemCount"].(float64))
 	t.Run("워커 생성(프로그램이 켜질 때 함께 생성됨. 워커 갯수 검사)", func(t *testing.T) {
-		if workerCount != worker_pool.WORKER_COUNT {
-			t.Fatalf("worker pool initialization failed. expected: %d, go: %d", worker_pool.WORKER_COUNT, workerCount)
+		if workerCount != 10 {
+			t.Fatalf("worker pool initialization failed. expected: %d, got: %d", 10, workerCount)
 		}
 	})
 	// 기본 자원(map, coin, item) 생성 및 자원 갯수 검사
@@ -81,12 +82,12 @@ func TestInitialResources(t *testing.T) {
 		gameMap := game.GetGameMap()
 		// 코인 검사(자원이 맵에 뿌려졌다는 것 자체가 맵이 잘 생성되었다는 것)
 		if coinCount > game.COIN_COUNT || coinCount == 0 { // <= 조건인 이유는 코인은 랜덤성을 위하여 중복된 위치가 선정될 경우 그냥 스킵해버리기 때문에 COIN_COUNT보다 적게 생성될 수도 있다.
-			t.Fatalf("coin count is not correct. expected: %d, got: %d", game.COIN_COUNT, len(gameMap.Coins))
+			t.Fatalf("coin count is not correct. expected: %d, got: %d", game.COIN_COUNT, gameMap.CountCoins())
 		}
 
 		// 아이템 검사
 		if itemCount != game.ITEM_COUNT { // 코인과 다르게 아이템은 무조건 ITEM_COUNT만큼 생성되어야 한다.
-			t.Fatalf("item count is not correct. expected: %d, got: %d", game.ITEM_COUNT, len(gameMap.RandomItems))
+			t.Fatalf("item count is not correct. expected: %d, got: %d", game.ITEM_COUNT, gameMap.CountItems())
 		}
 	})
 }
@@ -95,19 +96,24 @@ func TestWorkerPullOut(t *testing.T) {
 	// 최대 수의 유저 로그인(워커풀이 비었음을 검사하고, 추가로 로그인 시도 시 실패)
 	t.Run("최대 수의 유저(워커의 갯수 만큼) 로그인", func(t *testing.T) {
 		// 최대 수의 유저 로그인
-		for i := 0; i < worker_pool.WORKER_COUNT; i++ {
+		for i := 0; i < 10; i++ {
 			// 로그인 시도
-			// client는 UDP로 데이터를 전달 받기 때문에 먼저 UDP connection을 생성해야 한다.
-			conn, err := net.ListenUDP("udp", &net.UDPAddr{
+			// client는 TCP로 데이터를 전달 받기 때문에 먼저 TCP connection을 생성해야 한다.
+			listener, err := net.ListenTCP("tcp", &net.TCPAddr{
 				IP:   net.IPv4(127, 0, 0, 1),
 				Port: 0, // OS에게 빈 포트 요청
 			})
 
 			if err != nil {
-				t.Fatalf("failed to create UDP connection: %s", err)
+				t.Fatalf("failed to create TCP listener: %s", err)
 			}
 
-			clientPort := conn.LocalAddr().(*net.UDPAddr).Port
+			clientPort, err := strconv.Atoi(strings.Split(listener.Addr().String(), ":")[1])
+
+			if err != nil {
+				t.Fatalf("invalid port: %s", err)
+			}
+
 			// 로그인 성공 검사
 			// 유저 아이디 생성
 			userId := "user" + strconv.Itoa(i)
@@ -118,6 +124,7 @@ func TestWorkerPullOut(t *testing.T) {
 			}
 
 			defer resp.Body.Close()
+
 			respBytes, err := io.ReadAll(resp.Body)
 
 			if err != nil {
@@ -131,7 +138,7 @@ func TestWorkerPullOut(t *testing.T) {
 			}
 			// 로그인 성공 시 worker port를 받아온다.
 			clientListeners = append(clientListeners, &TestClient{
-				Conn:       conn,
+				Listener:   listener,
 				WorkerPort: workerPort,
 				ID:         userId,
 			})
@@ -139,7 +146,7 @@ func TestWorkerPullOut(t *testing.T) {
 	})
 
 	t.Run("초과 로그인 시 로그인 실패", func(t *testing.T) {
-		userId := "user-over-limit"
+		userId := "user-after-worker-drained"
 		resp, _ := http.Get(fmt.Sprintf(testServer.URL+"/get-worker-port/%s/%d", userId, 0))
 
 		if resp.StatusCode != http.StatusConflict {
@@ -178,7 +185,7 @@ func TestPlay(t *testing.T) {
 					// 원래대로라면 서버가 클라이언트의 위치를 강제로 결정할 수 있다(클라이언트가 유효하지 않은 위치에 존재할 시).
 					// 그래서 서버가 보내주는 데이터를 토대로 클라이언트에서 유저의 위치를 재조정하는 등의 동작이 가능하지만럼(멀티 플레이 게임에서 렉 걸릴 때 캐릭터 위치 강제로 결정되는 것 처럼)
 					// 이를 구현하려면 클라이언트에 구현되어 있는 것 처럼,
-					// 각 테스트 클라이언트가 서버의 UDP 통신을 수신하고 다시 그에 따라 위치를 position을 결정하는
+					// 각 테스트 클라이언트가 서버의 TCP 통신을 수신하고 다시 그에 따라 위치를 position을 결정하는
 					// 클라이언트의 로직이 서버 테스트에 포함되게 되므로, 서버의 테스트가 아닌 클라이언트의 테스트가 되어버린다.
 					// 서버가 애초에 out of bound 혹은 이미 점거된 위치에 대한 판단을 서버가 알아서 진행하므로, 유효하지 않은 위치를 계산하지 않고
 					// 클라이언트의 랜덤 포지션을 그대로 전송한다. 이 방법으로도 데이터에 대한 경합성 해결, 요청 무효화 등의 테스트는 가능하다.
@@ -199,10 +206,7 @@ func TestPlay(t *testing.T) {
 						panic(err)
 					}
 					// 유저의 위치를 서버에 전송
-					_, err = testClient.Conn.WriteToUDP(marshaledData, &net.UDPAddr{
-						IP:   net.IPv4(127, 0, 0, 1),
-						Port: testClient.WorkerPort,
-					})
+					_, err = testClient.Conn.Write(marshaledData)
 
 					if err != nil {
 						t.Log(err)

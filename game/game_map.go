@@ -11,6 +11,33 @@ import (
 	"time"
 )
 
+func GetGameMap() *GameMap {
+	if !gameMap.initialized {
+
+		gameMap.Map = Map{
+			Rows: make([]*Row, MAP_SIZE),
+		}
+
+		for i := 0; i < int(MAP_SIZE); i++ {
+			gameMap.Map.Rows[i] = &Row{
+				Cells: make([]*Cell, MAP_SIZE),
+			}
+			for j := 0; j < int(MAP_SIZE); j++ {
+				gameMap.Map.Rows[i].Cells[j] = &Cell{
+					Kind: owner_kind.GROUND,
+				}
+			}
+		}
+
+		gameMap.InitializeCoins()
+		gameMap.InitializeItems()
+
+		gameMap.initialized = true
+	}
+
+	return &gameMap
+}
+
 func (m *GameMap) StartUpdateObjectPosition(statusReceiver <-chan *Status, globalMapUpdateChannel chan EmptySignal) {
 	for status := range statusReceiver {
 		if status.Type == STATUS_TYPE_USER {
@@ -22,17 +49,17 @@ func (m *GameMap) StartUpdateObjectPosition(statusReceiver <-chan *Status, globa
 				kind := m.Map.Rows[status.CurrentPosition.Y].Cells[status.CurrentPosition.X].Kind
 				if kind == owner_kind.COIN {
 					// lock을 얻었으니 MoveCoinsRandomly가 Lock을 얻지 못하고 대기해야하므로, 이곳에서의 정합성은 만족된다.
-					coinIdx := slices.IndexFunc(m.Coins, func(coinPosition *Position) bool {
+					coinIdx := slices.IndexFunc(m.coins, func(coinPosition *Position) bool {
 						return coinPosition.X == status.CurrentPosition.X && coinPosition.Y == status.CurrentPosition.Y
 					})
 
-					m.Coins = append(m.Coins[:coinIdx], m.Coins[coinIdx+1:]...)
+					m.coins = append(m.coins[:coinIdx], m.coins[coinIdx+1:]...)
 
-					if len(m.Coins) == 0 {
+					if len(m.coins) == 0 {
 						m.InitializeCoins()
 					}
 
-					m.Scoreboard[status.Id] += 1
+					scoreboard[status.Id] += 1
 				} else if kind == owner_kind.ITEM_LENGTHEN_VISION || kind == owner_kind.ITEM_SHORTEN_VISION {
 					if userStatuses.StatusMap[status.Id].ResetTimer != nil {
 						userStatuses.StatusMap[status.Id].ResetTimer.Stop()
@@ -41,7 +68,7 @@ func (m *GameMap) StartUpdateObjectPosition(statusReceiver <-chan *Status, globa
 					userStatuses.StatusMap[status.Id].ResetTimer = time.AfterFunc(time.Second*6, func() {
 						userStatuses.StatusMap[status.Id].ItemEffect = item_effects.NONE
 					})
-					itemIdx := slices.IndexFunc(m.RandomItems, func(itemPosition *Position) bool {
+					itemIdx := slices.IndexFunc(m.randomItems, func(itemPosition *Position) bool {
 						return itemPosition.X == status.CurrentPosition.X && itemPosition.Y == status.CurrentPosition.Y
 					})
 
@@ -49,9 +76,9 @@ func (m *GameMap) StartUpdateObjectPosition(statusReceiver <-chan *Status, globa
 						slog.Debug("Item exists but not found in slice")
 					}
 
-					m.RandomItems = append(m.RandomItems[:itemIdx], m.RandomItems[itemIdx+1:]...)
+					m.randomItems = append(m.randomItems[:itemIdx], m.randomItems[itemIdx+1:]...)
 
-					if len(m.RandomItems) == 0 {
+					if len(m.randomItems) == 0 {
 						m.InitializeItems()
 					}
 
@@ -132,7 +159,7 @@ func (m *GameMap) isOccupied(position *Position) bool {
 	return m.Map.Rows[position.Y].Cells[position.X].Occupied
 }
 func (m *GameMap) InitializeItems() {
-	m.RandomItems = make([]*Position, 0)
+	m.randomItems = make([]*Position, 0)
 	// item은 coin과 다르게 항상 ITEM_COUNT만큼 생성되어야 한다.
 	toGenerate := ITEM_COUNT
 
@@ -154,7 +181,7 @@ func (m *GameMap) InitializeItems() {
 		}
 
 		m.Map.Rows[y].Cells[x] = itemCell
-		m.RandomItems = append(m.RandomItems, &Position{
+		m.randomItems = append(m.randomItems, &Position{
 			X: x,
 			Y: y,
 		})
@@ -162,7 +189,7 @@ func (m *GameMap) InitializeItems() {
 	}
 }
 func (m *GameMap) InitializeCoins() {
-	m.Coins = make([]*Position, 0)
+	m.coins = make([]*Position, 0)
 	for i := 0; i < COIN_COUNT; i++ { // 겹칠 수 있으니 코인의 갯수도 랜덤(Occupied되지 않은 곳에만 생성하니까). 즉 COIN_COUNT보다 적게 생성 될 수도 있다.
 		x, y := rand.Int32N(MAP_SIZE), rand.Int32N(MAP_SIZE)
 		if !m.Map.Rows[y].Cells[x].Occupied {
@@ -171,7 +198,7 @@ func (m *GameMap) InitializeCoins() {
 				Owner:    OWNER_SYSTEM,
 				Kind:     owner_kind.COIN,
 			}
-			m.Coins = append(m.Coins, &Position{
+			m.coins = append(m.coins, &Position{
 				X: x,
 				Y: y,
 			})
@@ -179,8 +206,16 @@ func (m *GameMap) InitializeCoins() {
 	}
 }
 
+func (m *GameMap) CountCoins() int {
+	return len(m.coins)
+}
+
+func (m *GameMap) CountItems() int {
+	return len(m.randomItems)
+}
+
 func (m *GameMap) MoveCoinsRandomly() {
-	for i, coinPosition := range m.Coins {
+	for i, coinPosition := range m.coins {
 		newPos := &Position{
 			X: coinPosition.X + GenerateRandomDirection(),
 			Y: coinPosition.Y + GenerateRandomDirection(),
@@ -202,30 +237,6 @@ func (m *GameMap) MoveCoinsRandomly() {
 			Kind:     owner_kind.COIN,
 		}
 
-		m.Coins[i] = newPos
+		m.coins[i] = newPos
 	}
-}
-
-func GetGameMap() *GameMap {
-	if !gameMap.Initialized {
-		gameMap.Scoreboard = make(map[string]int32)
-		gameMap.Map = Map{
-			Rows: make([]*Row, MAP_SIZE),
-		}
-
-		for i := 0; i < int(MAP_SIZE); i++ {
-			gameMap.Map.Rows[i] = &Row{
-				Cells: make([]*Cell, MAP_SIZE),
-			}
-			for j := 0; j < int(MAP_SIZE); j++ {
-				gameMap.Map.Rows[i].Cells[j] = &Cell{
-					Kind: owner_kind.GROUND,
-				}
-			}
-		}
-
-		gameMap.Initialized = true
-	}
-
-	return &gameMap
 }

@@ -1,6 +1,7 @@
 package http_server
 
 import (
+	"coin_chase/bootstrap"
 	"coin_chase/game"
 	"coin_chase/worker_pool"
 	"fmt"
@@ -12,10 +13,10 @@ import (
 	"strings"
 )
 
-func NewServer() *http.ServeMux {
-	// TODO gameMap을 가져오는 이유가 scoreBoard 때문인데 뭔가 부자연스러운듯..?
+func NewServer(initWorkerCount, maximumWorkerCount int) *http.ServeMux {
 	gameMap := game.GetGameMap()
 	server := http.NewServeMux()
+	bootstrap.Run(initWorkerCount, maximumWorkerCount)
 
 	server.HandleFunc("GET /get-worker-port/{userId}/{clientPort}", func(w http.ResponseWriter, r *http.Request) {
 		userId := r.PathValue("userId")
@@ -51,8 +52,8 @@ func NewServer() *http.ServeMux {
 		io.WriteString(w, fmt.Sprintf("%d", worker.Port))
 
 		worker.StartSendUserRelatedDataToClient()
-		// TODO 이건 SetClientInformation에 포함되는게 훨씬 자연스럽지 않나? 다른 모듈의 값을 직접 변경하는건 bad practice인듯?
-		gameMap.Scoreboard[userId] = 0 // 굳이 zero value를 할당하는 이유는 0점이라도 표시가 되어야하기 때문
+
+		game.SetUserScore(userId, 0)
 	})
 
 	server.HandleFunc("PATCH /disconnect/{userId}", func(w http.ResponseWriter, r *http.Request) {
@@ -68,8 +69,7 @@ func NewServer() *http.ServeMux {
 		}
 
 		workerPool.Put(workerId, worker)
-		// TODO http_server에서 직접 gameMap.ScoreBoard를 참조하는게 말이 안되는 듯..
-		delete(gameMap.Scoreboard, userId)
+		game.DeleteUserFromScoreboard(userId)
 
 		w.WriteHeader(http.StatusOK)
 		io.WriteString(w, "worker successfully returned to pool")
@@ -79,8 +79,8 @@ func NewServer() *http.ServeMux {
 	server.HandleFunc("GET /server-state", func(w http.ResponseWriter, r *http.Request) {
 		workerPool := worker_pool.GetWorkerPool()
 		workerCount := workerPool.GetAvailableWorkerCount()
-		coinCount := len(gameMap.Coins)
-		itemCount := len(gameMap.RandomItems)
+		coinCount := gameMap.CountCoins()
+		itemCount := gameMap.CountItems()
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
