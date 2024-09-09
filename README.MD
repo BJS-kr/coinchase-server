@@ -39,11 +39,13 @@ TCP로 상태를 갱신 및 전파하며, protocol buffer를 사용합니다.
 3. worker creation check
 4. maintain worker pool size
 5. mutual termination of related goroutines
-6. no race condition(go test -race 다회 실행)
+6. no race condition(go test -race 다회 실행 검증)
 
-## Mutex 최소화 실패
-mutex를 최소화하며 atomicity가 만족되도록 구조를 설계해야했으나, 미숙함으로 인해 여러 경합 발생.  
+## 구조적 결함
+mutex를 최소화하며 atomicity가 만족되도록 구조를 설계해야했으나, 미숙함으로 인해 여러 경합 상황 발생.  
 이로 인해 mutex 및 rwmutex 다수 사용
+
+goroutine이 코드전역에 다수 산개해있어 디버깅에 오랜 시간 소요 
 
 
 
