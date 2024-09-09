@@ -19,6 +19,7 @@ func main() {
 	programLevel.Set(slog.LevelDebug)
 	logHandler := slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: programLevel})
 	slog.SetDefault(slog.New(logHandler))
+
 	httpServer := http_server.NewServer(INIT_WORKER_COUNT, MAXIMUM_WORKER_COUNT)
 
 	log.Fatal(http.ListenAndServe(PORT, httpServer))

@@ -15,14 +15,19 @@ import (
 )
 
 func GetWorkerPool() *WorkerPool {
-	if !workerPool.Initialized {
-		workerPool = WorkerPool{
-			Pool:        make(map[string]*Worker),
-			Initialized: true,
-		}
+	return &workerPool
+}
+
+func (wp *WorkerPool) GetCopiedPool() Pool {
+	wp.rwmtx.RLock()
+	defer wp.rwmtx.RUnlock()
+
+	newPool := make(Pool)
+	for workerId, worker := range wp.Pool {
+		newPool[workerId] = worker
 	}
 
-	return &workerPool
+	return newPool
 }
 
 const WORKER_INIT_TIMEOUT_SEC = time.Second * 3
@@ -137,6 +142,15 @@ func (wp *WorkerPool) Put(workerId string, worker *Worker) error {
 	return nil
 }
 
+func (wp *WorkerPool) Delete(workerId string) {
+	wp.rwmtx.Lock()
+
+	defer wp.rwmtx.Unlock()
+
+	delete(wp.Pool, workerId)
+
+}
+
 func (wp *WorkerPool) PoolSize() int {
 	return len(wp.Pool)
 }
@@ -161,16 +175,9 @@ func (wp *WorkerPool) MakeWorker(port int) *Worker {
 	}
 }
 
-func (wp *WorkerPool) GetPool() Pool {
-	wp.rwmtx.RLock()
-	defer wp.rwmtx.RUnlock()
-
-	return wp.Pool
-}
-
 func (wp *WorkerPool) BroadcastSignal(broadcastChannel chan game.EmptySignal) {
 	for range broadcastChannel {
-		for _, worker := range wp.GetPool() {
+		for _, worker := range wp.GetCopiedPool() {
 			if worker.GetStatus() == worker_status.WORKING {
 				worker.BroadcastUpdateChannel <- game.Signal
 			}

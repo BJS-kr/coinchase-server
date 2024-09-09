@@ -18,10 +18,11 @@ func HealthCheckAndRevive(intervalSec int, statusChannel chan *game.Status, maxi
 	for {
 		time.Sleep(time.Second * time.Duration(intervalSec))
 
-		for workerID, worker := range workerPool.Pool {
+		for workerId, worker := range workerPool.GetCopiedPool() {
 			if worker.GetStatus() == worker_status.TERMINATED {
 				slog.Debug("terminated worker discovered")
-				delete(workerPool.Pool, workerID)
+
+				workerPool.Delete(workerId)
 				workerPool.LaunchWorkers(1, statusChannel, maximumWorkerCount)
 			}
 
@@ -31,7 +32,7 @@ func HealthCheckAndRevive(intervalSec int, statusChannel chan *game.Status, maxi
 			select {
 			case <-timeout.Done():
 				{
-					delete(workerPool.Pool, workerID)
+					workerPool.Delete(workerId)
 					// worker와 TCP Receiver가 mutually terminate되므로
 					// health check 이상시 worker에게 force exit signal을 전송하면 자원들이 정리된다.
 					// 물론 worker가 이미 panic되었을 경우가 가장 많겠지만 혹시 모를 leak을 방지하기 위한 것이다.
@@ -44,5 +45,6 @@ func HealthCheckAndRevive(intervalSec int, statusChannel chan *game.Status, maxi
 				cancel()
 			}
 		}
+
 	}
 }

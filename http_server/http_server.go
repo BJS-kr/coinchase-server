@@ -15,6 +15,7 @@ import (
 
 func NewServer(initWorkerCount, maximumWorkerCount int) *http.ServeMux {
 	gameMap := game.GetGameMap()
+	scoreboard := game.GetScoreboard()
 	server := http.NewServeMux()
 	bootstrap.Run(initWorkerCount, maximumWorkerCount)
 
@@ -53,7 +54,7 @@ func NewServer(initWorkerCount, maximumWorkerCount int) *http.ServeMux {
 
 		worker.StartSendUserRelatedDataToClient()
 
-		game.SetUserScore(userId, 0)
+		scoreboard.SetUserScore(userId, 0)
 	})
 
 	server.HandleFunc("PATCH /disconnect/{userId}", func(w http.ResponseWriter, r *http.Request) {
@@ -69,7 +70,7 @@ func NewServer(initWorkerCount, maximumWorkerCount int) *http.ServeMux {
 		}
 
 		workerPool.Put(workerId, worker)
-		game.DeleteUserFromScoreboard(userId)
+		scoreboard.DeleteUserFromScoreboard(userId)
 
 		w.WriteHeader(http.StatusOK)
 		io.WriteString(w, "worker successfully returned to pool")

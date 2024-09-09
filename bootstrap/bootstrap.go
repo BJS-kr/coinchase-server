@@ -18,6 +18,9 @@ func Run(initWorkerCount, maximumWorkerCount int) {
 	gameMapUpdateChannel := make(chan game.EmptySignal)
 	gameMap := game.GetGameMap()
 
+	gameMap.InitializeCoins()
+	gameMap.InitializeItems()
+
 	go worker_pool.HealthCheckAndRevive(10, statusChannel, maximumWorkerCount)
 	go gameMap.StartUpdateObjectPosition(statusChannel, gameMapUpdateChannel)
 	go workerPool.BroadcastSignal(gameMapUpdateChannel)

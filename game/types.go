@@ -1,6 +1,9 @@
 package game
 
-import "time"
+import (
+	"sync"
+	"time"
+)
 
 type TileKind int32
 type ItemEffect int32
@@ -50,15 +53,18 @@ type Map struct {
 }
 
 type GameMap struct {
-	initialized bool
 	Map         Map
 	coins       []*Position
 	randomItems []*Position
+	rwmtx       sync.RWMutex
 }
 
-type Scoreboard map[string]int32
+type Scoreboard struct {
+	rwmtx sync.RWMutex
+	board map[string]int32
+}
 
 type UserStatuses struct {
-	Initialized bool
-	StatusMap   map[string]*UserStatus
+	StatusMap map[string]*UserStatus
+	rwmtx     sync.RWMutex
 }

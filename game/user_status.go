@@ -1,17 +1,18 @@
 package game
 
-import "coin_chase/game/item_effects"
+import (
+	"coin_chase/game/item_effects"
+	"time"
+)
 
 func GetUserStatuses() *UserStatuses {
-	if !userStatuses.Initialized {
-		userStatuses.StatusMap = make(map[string]*UserStatus)
-		userStatuses.Initialized = true
-	}
-
 	return &userStatuses
 }
 
 func (uss *UserStatuses) GetUserPosition(userId string) (*Position, bool) {
+	uss.rwmtx.RLock()
+	defer uss.rwmtx.RUnlock()
+
 	userStatus, ok := uss.StatusMap[userId]
 
 	if !ok {
@@ -22,6 +23,9 @@ func (uss *UserStatuses) GetUserPosition(userId string) (*Position, bool) {
 }
 
 func (uss *UserStatuses) SetUserPosition(userId string, X, Y int32) {
+	uss.rwmtx.Lock()
+	defer uss.rwmtx.Unlock()
+
 	userStatus, ok := uss.StatusMap[userId]
 
 	if !ok {
@@ -44,4 +48,44 @@ func (uss *UserStatuses) SetUserPosition(userId string, X, Y int32) {
 		},
 		ResetTimer: userStatus.ResetTimer,
 	}
+}
+
+func (uss *UserStatuses) GetUserStatus(clientId string) *UserStatus {
+	uss.rwmtx.RLock()
+	defer uss.rwmtx.RUnlock()
+
+	if userStatus, ok := uss.StatusMap[clientId]; ok {
+
+		return &UserStatus{
+			Position:   userStatus.Position,
+			ItemEffect: userStatus.ItemEffect,
+			ResetTimer: userStatus.ResetTimer,
+		}
+	}
+
+	return nil
+}
+
+func (uss *UserStatuses) SetItemEffect(userId string, itemEffect ItemEffect) {
+	uss.rwmtx.Lock()
+	defer uss.rwmtx.Unlock()
+
+	uss.StatusMap[userId].ItemEffect = itemEffect
+}
+
+func (uss *UserStatuses) SetResetTimer(userId string, timer *time.Timer) {
+	uss.rwmtx.Lock()
+	defer uss.rwmtx.Unlock()
+
+	uss.StatusMap[userId].ResetTimer = timer
+}
+
+func (uss *UserStatuses) GetResetTimer(userId string) *time.Timer {
+	userStatus := uss.StatusMap[userId]
+
+	if userStatus == nil {
+		return nil
+	}
+
+	return uss.StatusMap[userId].ResetTimer
 }

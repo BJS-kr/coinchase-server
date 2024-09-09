@@ -3,6 +3,7 @@ package worker_pool
 import (
 	"bytes"
 	"coin_chase/game"
+	"coin_chase/game/status_types"
 	"coin_chase/protodef"
 	"coin_chase/worker_pool/worker_status"
 	"context"
@@ -53,6 +54,13 @@ func (w *Worker) StartSendUserRelatedDataToClient() error {
 		return errors.New("INVALID STATUS CHANGE: WORKER STATUS NOT \"CLIENT_INFORMATION_RECEIVED\"")
 	}
 
+	if w.SendUserRelatedDataToClient == nil {
+		w.ForceExitSignal <- game.Signal
+		slog.Debug("INVALID STATUS CHANGE: worker does not have mandatory property(SendUserRelatedDataToClient)")
+
+		return errors.New("INVALID STATUS CHANGE: worker does not have mandatory property(SendUserRelatedDataToClient)")
+	}
+
 	w.ChangeStatus(worker_status.WORKING)
 
 	go w.SendUserRelatedDataToClient(w.OwnerUserID, w.ClientIP, w.ClientPort, w.StopClientSendSignal)
@@ -94,6 +102,7 @@ func (w *Worker) ReceiveDataFromClient(tcpListener *net.TCPListener, statusSende
 
 	for {
 		select {
+		// 두 케이스 모두 defer 된 sendMutualTerminationSignal이 TERMINATED로 마킹하게 되고 헬스체커가 처리
 		case <-mutualTerminationContext.Done():
 			slog.Info("Termination signal receive in TCP receiver")
 			return
@@ -108,6 +117,10 @@ func (w *Worker) ReceiveDataFromClient(tcpListener *net.TCPListener, statusSende
 			size, err := conn.Read(buffer)
 
 			if err != nil {
+				if errors.Is(err, io.EOF) {
+					continue
+				}
+
 				log.Fatal("Read from TCP connection failed\n" + err.Error())
 			}
 
@@ -137,7 +150,7 @@ func (w *Worker) ReceiveDataFromClient(tcpListener *net.TCPListener, statusSende
 					}
 
 					userStatus := &game.Status{
-						Type: game.STATUS_TYPE_USER,
+						Type: status_types.USER,
 						Id:   protoStatus.Id,
 						CurrentPosition: game.Position{
 							X: protoStatus.CurrentPosition.X,
@@ -164,8 +177,8 @@ func (w *Worker) CollectToSendUserRelatedDataToClient(sendMutualTerminationSigna
 		if err != nil {
 			log.Fatal(err.Error())
 		}
-
-		client, err := net.DialTCP("tcp", nil, clientAddr)
+		d := net.Dialer{Timeout: time.Minute * 5}
+		conn, err := d.Dial("tcp", clientAddr.String())
 
 		if err != nil {
 			slog.Debug(err.Error())
@@ -173,6 +186,7 @@ func (w *Worker) CollectToSendUserRelatedDataToClient(sendMutualTerminationSigna
 		}
 
 		faultTolerance := 100
+		gameMap, userStatuses, scoreboard := game.GetGameMap(), game.GetUserStatuses(), game.GetScoreboard()
 
 		for {
 			select {
@@ -189,10 +203,9 @@ func (w *Worker) CollectToSendUserRelatedDataToClient(sendMutualTerminationSigna
 				slog.Info("force exit signal received in SendUserRelatedDataToClient")
 				return
 			case <-broadcastUpdateChannel:
-				gameMap, userStatuses := game.GetGameMap(), game.GetUserStatuses()
-				userStatus, ok := userStatuses.StatusMap[clientId]
+				userStatus := userStatuses.GetUserStatus(clientId)
 
-				if !ok {
+				if userStatus == nil {
 					continue
 				}
 
@@ -222,7 +235,7 @@ func (w *Worker) CollectToSendUserRelatedDataToClient(sendMutualTerminationSigna
 				protoUserRelatedPositions := &protodef.RelatedPositions{
 					UserPosition:     protoUserPosition,
 					RelatedPositions: protoRelatedPositions,
-					Scoreboard:       game.GetScoreboard(),
+					Scoreboard:       scoreboard.GetCopiedBoard(),
 				}
 
 				marshaledProtoUserRelatedPositions, err := proto.Marshal(protoUserRelatedPositions)
@@ -233,7 +246,8 @@ func (w *Worker) CollectToSendUserRelatedDataToClient(sendMutualTerminationSigna
 
 				// packet size 최소화를 위해 snappy를 씁니다.
 				compressedUserRelatedPositions := snappy.Encode(nil, marshaledProtoUserRelatedPositions)
-				_, err = client.Write(compressedUserRelatedPositions)
+
+				_, err = conn.Write(compressedUserRelatedPositions)
 
 				if err != nil {
 					slog.Debug(err.Error(), "fault tolerance remain:", faultTolerance)
@@ -244,7 +258,6 @@ func (w *Worker) CollectToSendUserRelatedDataToClient(sendMutualTerminationSigna
 						panic(err)
 					}
 				}
-
 			}
 		}
 	}

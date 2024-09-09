@@ -10,9 +10,8 @@ import (
 type WorkerStatus int
 type Pool map[string]*Worker
 type WorkerPool struct {
-	rwmtx       sync.RWMutex
-	Pool        Pool
-	Initialized bool
+	rwmtx sync.RWMutex
+	Pool  Pool
 }
 
 type Worker struct {

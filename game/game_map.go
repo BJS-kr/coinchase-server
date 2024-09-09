@@ -4,51 +4,50 @@ package game
 import (
 	"coin_chase/game/item_effects"
 	"coin_chase/game/owner_kind"
-	"log"
+	"coin_chase/game/status_types"
 	"log/slog"
 	"math/rand/v2"
 	"slices"
 	"time"
 )
 
-func GetGameMap() *GameMap {
-	if !gameMap.initialized {
+const RESET_DURATION = time.Second * 6
 
-		gameMap.Map = Map{
-			Rows: make([]*Row, MAP_SIZE),
-		}
-
-		for i := 0; i < int(MAP_SIZE); i++ {
-			gameMap.Map.Rows[i] = &Row{
-				Cells: make([]*Cell, MAP_SIZE),
-			}
-			for j := 0; j < int(MAP_SIZE); j++ {
-				gameMap.Map.Rows[i].Cells[j] = &Cell{
-					Kind: owner_kind.GROUND,
-				}
-			}
-		}
-
-		gameMap.InitializeCoins()
-		gameMap.InitializeItems()
-
-		gameMap.initialized = true
+func MakeMap() Map {
+	m := Map{
+		Rows: make([]*Row, MAP_SIZE),
 	}
 
+	for i := 0; i < int(MAP_SIZE); i++ {
+		m.Rows[i] = &Row{
+			Cells: make([]*Cell, MAP_SIZE),
+		}
+		for j := 0; j < int(MAP_SIZE); j++ {
+			m.Rows[i].Cells[j] = &Cell{
+				Kind: owner_kind.GROUND,
+			}
+		}
+	}
+
+	return m
+}
+
+func GetGameMap() *GameMap {
 	return &gameMap
 }
 
 func (m *GameMap) StartUpdateObjectPosition(statusReceiver <-chan *Status, globalMapUpdateChannel chan EmptySignal) {
 	for status := range statusReceiver {
-		if status.Type == STATUS_TYPE_USER {
+
+		if status.Type == status_types.USER {
 			if m.isOutOfRange(&status.CurrentPosition) {
 				continue
 			}
 
 			if m.isOccupied(&status.CurrentPosition) {
 				kind := m.Map.Rows[status.CurrentPosition.Y].Cells[status.CurrentPosition.X].Kind
+
 				if kind == owner_kind.COIN {
-					// lock을 얻었으니 MoveCoinsRandomly가 Lock을 얻지 못하고 대기해야하므로, 이곳에서의 정합성은 만족된다.
 					coinIdx := slices.IndexFunc(m.coins, func(coinPosition *Position) bool {
 						return coinPosition.X == status.CurrentPosition.X && coinPosition.Y == status.CurrentPosition.Y
 					})
@@ -59,15 +58,16 @@ func (m *GameMap) StartUpdateObjectPosition(statusReceiver <-chan *Status, globa
 						m.InitializeCoins()
 					}
 
-					scoreboard[status.Id] += 1
+					scoreboard.IncreaseUserScore(status.Id)
 				} else if kind == owner_kind.ITEM_LENGTHEN_VISION || kind == owner_kind.ITEM_SHORTEN_VISION {
-					if userStatuses.StatusMap[status.Id].ResetTimer != nil {
-						userStatuses.StatusMap[status.Id].ResetTimer.Stop()
+					if resetTimer := userStatuses.GetResetTimer(status.Id); resetTimer != nil {
+						resetTimer.Stop()
 					}
 
-					userStatuses.StatusMap[status.Id].ResetTimer = time.AfterFunc(time.Second*6, func() {
-						userStatuses.StatusMap[status.Id].ItemEffect = item_effects.NONE
-					})
+					userStatuses.SetResetTimer(status.Id, time.AfterFunc(RESET_DURATION, func() {
+						userStatuses.SetItemEffect(status.Id, item_effects.NONE)
+					}))
+
 					itemIdx := slices.IndexFunc(m.randomItems, func(itemPosition *Position) bool {
 						return itemPosition.X == status.CurrentPosition.X && itemPosition.Y == status.CurrentPosition.Y
 					})
@@ -84,33 +84,34 @@ func (m *GameMap) StartUpdateObjectPosition(statusReceiver <-chan *Status, globa
 
 					if kind == owner_kind.ITEM_LENGTHEN_VISION {
 						// UserStatuses를 변조하고 있으나, 변조하는 스레드들이 각자 RWMutexMap의 Lock을 얻어야하므로 상관없다.
-						userStatuses.StatusMap[status.Id].ItemEffect = item_effects.LENGTHEN
+						userStatuses.SetItemEffect(status.Id, item_effects.LENGTHEN)
 					} else if kind == owner_kind.ITEM_SHORTEN_VISION {
-						userStatuses.StatusMap[status.Id].ItemEffect = item_effects.SHORTEN
+						userStatuses.SetItemEffect(status.Id, item_effects.SHORTEN)
 					}
 				} else {
-					log.Fatal("invalid occupied object found")
+					continue
 				}
 			}
 			// 이 currentPosition은 서버에 저장된 user의 위치 정보로, userStatus.CurrentPosition과는 다른 값이다.
 			currentPosition, exists := userStatuses.GetUserPosition(status.Id)
 
 			if exists {
-				m.Map.Rows[currentPosition.Y].Cells[currentPosition.X] = &Cell{
+				m.UpdateMap(currentPosition.X, currentPosition.Y, &Cell{
 					Occupied: false,
 					Owner:    "",
 					Kind:     owner_kind.GROUND,
-				}
+				})
 			}
 
 			userStatuses.SetUserPosition(status.Id, status.CurrentPosition.X, status.CurrentPosition.Y)
 
-			m.Map.Rows[status.CurrentPosition.Y].Cells[status.CurrentPosition.X] = &Cell{
+			m.UpdateMap(status.CurrentPosition.X, status.CurrentPosition.Y, &Cell{
 				Occupied: true,
 				Owner:    status.Id,
 				Kind:     owner_kind.USER,
-			}
-		} else if status.Type == STATUS_TYPE_COIN {
+			})
+
+		} else if status.Type == status_types.COIN {
 			m.MoveCoinsRandomly()
 		}
 
@@ -126,6 +127,7 @@ func (m *GameMap) GetRelatedPositions(userPosition *Position, visibleRange int32
 			if x == 0 && y == 0 {
 				continue // 자신의 위치임
 			}
+
 			surroundedPositions = append(surroundedPositions, Position{
 				X: userPosition.X + x,
 				Y: userPosition.Y + y,
@@ -134,15 +136,19 @@ func (m *GameMap) GetRelatedPositions(userPosition *Position, visibleRange int32
 	}
 
 	relatedPositions := make([]*RelatedPosition, 0)
+
+	m.rwmtx.RLock()
+	defer m.rwmtx.RUnlock()
+
 	for _, surroundedPosition := range surroundedPositions {
 		if m.isOutOfRange(&surroundedPosition) {
 			continue
 		}
-		relatedPosition := RelatedPosition{
+
+		relatedPositions = append(relatedPositions, &RelatedPosition{
 			Position: &surroundedPosition,
 			Cell:     m.Map.Rows[surroundedPosition.Y].Cells[surroundedPosition.X],
-		}
-		relatedPositions = append(relatedPositions, &relatedPosition)
+		})
 	}
 
 	return relatedPositions
@@ -159,6 +165,9 @@ func (m *GameMap) isOccupied(position *Position) bool {
 	return m.Map.Rows[position.Y].Cells[position.X].Occupied
 }
 func (m *GameMap) InitializeItems() {
+	m.rwmtx.Lock()
+	defer m.rwmtx.Unlock()
+
 	m.randomItems = make([]*Position, 0)
 	// item은 coin과 다르게 항상 ITEM_COUNT만큼 생성되어야 한다.
 	toGenerate := ITEM_COUNT
@@ -189,6 +198,9 @@ func (m *GameMap) InitializeItems() {
 	}
 }
 func (m *GameMap) InitializeCoins() {
+	m.rwmtx.Lock()
+	defer m.rwmtx.Unlock()
+
 	m.coins = make([]*Position, 0)
 	for i := 0; i < COIN_COUNT; i++ { // 겹칠 수 있으니 코인의 갯수도 랜덤(Occupied되지 않은 곳에만 생성하니까). 즉 COIN_COUNT보다 적게 생성 될 수도 있다.
 		x, y := rand.Int32N(MAP_SIZE), rand.Int32N(MAP_SIZE)
@@ -225,18 +237,25 @@ func (m *GameMap) MoveCoinsRandomly() {
 			continue
 		}
 
-		m.Map.Rows[coinPosition.Y].Cells[coinPosition.X] = &Cell{
+		m.UpdateMap(coinPosition.X, coinPosition.Y, &Cell{
 			Occupied: false,
 			Owner:    "",
 			Kind:     owner_kind.GROUND,
-		}
+		})
 
-		m.Map.Rows[newPos.Y].Cells[newPos.X] = &Cell{
+		m.UpdateMap(newPos.X, newPos.Y, &Cell{
 			Occupied: true,
 			Owner:    OWNER_SYSTEM,
 			Kind:     owner_kind.COIN,
-		}
+		})
 
 		m.coins[i] = newPos
 	}
+}
+
+func (m *GameMap) UpdateMap(x, y int32, cell *Cell) {
+	m.rwmtx.Lock()
+	defer m.rwmtx.Unlock()
+
+	m.Map.Rows[y].Cells[x] = cell
 }

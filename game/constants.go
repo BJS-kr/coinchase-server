@@ -1,8 +1,6 @@
 package game
 
 const OWNER_SYSTEM = "system"
-const STATUS_TYPE_USER = "u"
-const STATUS_TYPE_COIN = "c"
 
 const (
 	MAP_SIZE        int32 = 20
