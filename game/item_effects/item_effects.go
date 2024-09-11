@@ -1,8 +1,8 @@
 package item_effects
 
 const (
-	UNKNOWN_EFFECT = 999
-	NONE           = 2
-	SHORTEN        = 1
-	LENGTHEN       = 4
+	UNKNOWN_EFFECT = iota + 1_000
+	NONE
+	SHORTEN
+	LENGTHEN
 )

@@ -1,7 +1,7 @@
 package worker_status
 
 const (
-	IDLE = iota + 1
+	IDLE = iota + 100_000
 	PULLED_OUT
 	CLIENT_INFORMATION_RECEIVED
 	WORKING

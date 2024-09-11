@@ -1,7 +1,7 @@
 package owner_kind
 
 const (
-	UNKNOWN = iota
+	UNKNOWN = iota + 10_000
 	USER
 	COIN
 	ITEM_LENGTHEN_VISION
