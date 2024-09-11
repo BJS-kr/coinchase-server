@@ -121,7 +121,7 @@ func (w *Worker) ReceiveDataFromClient(tcpListener *net.TCPListener, statusSende
 					continue
 				}
 
-				log.Fatal("Read from TCP connection failed\n" + err.Error())
+				log.Fatal("Read from TCP connection failed " + err.Error())
 			}
 
 			if size >= BUFFER_SIZE {
@@ -243,6 +243,8 @@ func (w *Worker) CollectToSendUserRelatedDataToClient(sendMutualTerminationSigna
 				if err != nil {
 					log.Fatal(err.Error())
 				}
+
+				marshaledProtoUserRelatedPositions = append(marshaledProtoUserRelatedPositions, '$')
 
 				// packet size 최소화를 위해 snappy를 씁니다.
 				compressedUserRelatedPositions := snappy.Encode(nil, marshaledProtoUserRelatedPositions)
