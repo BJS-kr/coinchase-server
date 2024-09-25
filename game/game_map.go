@@ -15,6 +15,7 @@ import (
 const (
 	RESET_DURATION = time.Second * 6
 	ATTACK_DAMAGE  = 3
+	COIN_SCORE     = 1
 )
 
 var (
@@ -103,7 +104,7 @@ func (m *GameMap) HandleUserStatus(status *Status) error {
 				m.InitializeCoins()
 			}
 
-			scoreboard.IncreaseUserScore(status.Id)
+			scoreboard.IncreaseUserScore(status.Id, COIN_SCORE)
 		} else if kind == owner_kind.ITEM_LENGTHEN_VISION || kind == owner_kind.ITEM_SHORTEN_VISION {
 			if resetTimer := userStatuses.GetResetTimer(status.Id); resetTimer != nil {
 				resetTimer.Stop()

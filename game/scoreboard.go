@@ -7,11 +7,11 @@ func (sc *Scoreboard) SetUserScore(userId string, score int32) {
 	sc.board[userId] = score
 }
 
-func (sc *Scoreboard) IncreaseUserScore(userId string) {
+func (sc *Scoreboard) IncreaseUserScore(userId string, amount int32) {
 	sc.rwmtx.Lock()
 	defer sc.rwmtx.Unlock()
 
-	sc.board[userId] += 1
+	sc.board[userId] += amount
 }
 
 func (sc *Scoreboard) DecreaseUserScore(userId string, amount int32) {
