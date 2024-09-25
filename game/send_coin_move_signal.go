@@ -1,17 +1,14 @@
 package game
 
 import (
-	"coin_chase/game/status_types"
 	"time"
 )
 
-func SendCoinMoveSignalIntervally(statusSender chan<- *Status, coinMoveIntervalMillis int) {
+func SendCoinMoveSignalIntervally(coinMoveIntervalMillis int) {
 	ticker := time.NewTicker(time.Millisecond * time.Duration(coinMoveIntervalMillis))
-	coinMoveSignal := &Status{
-		Type: status_types.COIN,
-	}
+	signal := EmptySignal{}
 
 	for range ticker.C {
-		statusSender <- coinMoveSignal
+		CoinMoveSignal <- signal
 	}
 }

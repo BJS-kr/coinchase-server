@@ -7,9 +7,8 @@ import (
 )
 
 func Run(initWorkerCount, maximumWorkerCount int) {
-	statusChannel := make(chan *game.Status)
 	workerPool := worker_pool.GetWorkerPool()
-	workerPool.LaunchWorkers(initWorkerCount, statusChannel, maximumWorkerCount)
+	workerPool.LaunchWorkers(initWorkerCount, maximumWorkerCount)
 
 	if workerPool.GetAvailableWorkerCount() != initWorkerCount {
 		panic(fmt.Sprintf("worker pool initialization failed. initialized count: %d, expected count: %d", len(workerPool.Pool), initWorkerCount))
@@ -21,8 +20,8 @@ func Run(initWorkerCount, maximumWorkerCount int) {
 	gameMap.InitializeCoins()
 	gameMap.InitializeItems()
 
-	go worker_pool.HealthCheckAndRevive(10, statusChannel, maximumWorkerCount)
-	go gameMap.StartUpdateObjectPosition(statusChannel, gameMapUpdateChannel)
+	go worker_pool.HealthCheckAndRevive(10, maximumWorkerCount)
+	go gameMap.StartUpdateMap(gameMapUpdateChannel)
 	go workerPool.BroadcastSignal(gameMapUpdateChannel)
-	go game.SendCoinMoveSignalIntervally(statusChannel, 500)
+	go game.SendCoinMoveSignalIntervally(500)
 }

@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package attack;
+
+import public "protodef/status.proto";
+import public "protodef/game_map.proto";
+
+option go_package = "./protodef";
+
+message Attack {
+    string user_id = 1;
+    status.Position user_position = 2;
+    status.Position attack_position = 3;
+}

@@ -3,7 +3,7 @@ package worker_pool
 import (
 	"bytes"
 	"coin_chase/game"
-	"coin_chase/game/status_types"
+
 	"coin_chase/protodef"
 	"coin_chase/worker_pool/worker_status"
 	"context"
@@ -26,9 +26,13 @@ import (
 // graceful shutdown(wait until return이나 terminate signal(runtime.Goexit)등)을 만들지 않은 이유
 // main goroutine이 종료된다고 해서 나머지 goroutine이 동시에 처리되는 것은 아니나, 이는 leak을 만들지 않고 결국 종료된다.
 // 자세한 내용은 https://stackoverflow.com/questions/72553044/what-happens-to-unfinished-goroutines-when-the-main-parent-goroutine-exits-or-re을 참고
-const READ_DEADLINE = time.Second * 300
-const BUFFER_SIZE = 4096
-const BUFFER_DELIMITER byte = '$'
+const (
+	READ_DEADLINE      = time.Second * 300
+	BUFFER_SIZE        = 4096
+	BUFFER_DELIMITER   = '$'
+	PACKET_TYPE_STATUS = 0
+	PACKET_TYPE_ATTACK = 1
+)
 
 func (w *Worker) SetClientInformation(userId string, clientIP *net.IP, clientPort int) error {
 	if w.GetStatus() != worker_status.PULLED_OUT {
@@ -68,7 +72,7 @@ func (w *Worker) StartSendUserRelatedDataToClient() error {
 	return nil
 }
 
-func (w *Worker) ReceiveDataFromClient(tcpListener *net.TCPListener, statusSender chan<- *game.Status, initWorker *sync.WaitGroup, sendMutualTerminationSignal func(), mutualTerminationContext context.Context) {
+func (w *Worker) ReceiveDataFromClient(tcpListener *net.TCPListener, initWorker *sync.WaitGroup, sendMutualTerminationSignal func(), mutualTerminationContext context.Context) {
 	defer sendMutualTerminationSignal()
 	defer tcpListener.Close()
 
@@ -143,22 +147,40 @@ func (w *Worker) ReceiveDataFromClient(tcpListener *net.TCPListener, statusSende
 						}
 					}
 
-					protoStatus := new(protodef.Status)
+					switch data[0] {
+					case PACKET_TYPE_STATUS:
+						protoStatus := new(protodef.Status)
 
-					if err := proto.Unmarshal(data[:len(data)-1], protoStatus); err != nil {
-						log.Fatal("TCP unmarshal failed\n" + err.Error())
+						if err := proto.Unmarshal(data[1:len(data)-1], protoStatus); err != nil {
+							log.Fatal("TCP unmarshal failed\n" + err.Error())
+						}
+
+						game.StatusReceiver <- &game.Status{
+							Id: protoStatus.Id,
+							CurrentPosition: game.Position{
+								X: protoStatus.CurrentPosition.X,
+								Y: protoStatus.CurrentPosition.Y,
+							},
+						}
+					case PACKET_TYPE_ATTACK:
+						protoAttack := new(protodef.Attack)
+
+						if err := proto.Unmarshal(data[1:len(data)-1], protoAttack); err != nil {
+							log.Fatal("TCP unmarshal failed\n" + err.Error())
+						}
+
+						game.AttackReceiver <- &game.Attack{
+							UserId: protoAttack.UserId,
+							UserPosition: game.Position{
+								X: protoAttack.UserPosition.X,
+								Y: protoAttack.UserPosition.Y,
+							},
+							AttackPosition: game.Position{
+								X: protoAttack.AttackPosition.X,
+								Y: protoAttack.AttackPosition.Y,
+							},
+						}
 					}
-
-					userStatus := &game.Status{
-						Type: status_types.USER,
-						Id:   protoStatus.Id,
-						CurrentPosition: game.Position{
-							X: protoStatus.CurrentPosition.X,
-							Y: protoStatus.CurrentPosition.Y,
-						},
-					}
-
-					statusSender <- userStatus
 				}
 
 				// 0 이상의 패킷 수신마다 갱신

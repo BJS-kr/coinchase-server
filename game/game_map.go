@@ -4,7 +4,8 @@ package game
 import (
 	"coin_chase/game/item_effects"
 	"coin_chase/game/owner_kind"
-	"coin_chase/game/status_types"
+	"errors"
+
 	"log/slog"
 	"math/rand/v2"
 	"slices"
@@ -12,6 +13,15 @@ import (
 )
 
 const RESET_DURATION = time.Second * 6
+
+var (
+	AttackReceiver = make(chan *Attack)
+	StatusReceiver = make(chan *Status)
+	CoinMoveSignal = make(chan EmptySignal)
+
+	ErrOutOfRange = errors.New("out of range")
+	ErrOccupied   = errors.New("occupied")
+)
 
 func MakeMap() Map {
 	m := Map{
@@ -36,87 +46,97 @@ func GetGameMap() *GameMap {
 	return &gameMap
 }
 
-func (m *GameMap) StartUpdateObjectPosition(statusReceiver <-chan *Status, globalMapUpdateChannel chan EmptySignal) {
-	for status := range statusReceiver {
-
-		if status.Type == status_types.USER {
-			if m.isOutOfRange(&status.CurrentPosition) {
-				continue
+func (m *GameMap) StartUpdateMap(globalMapUpdateChannel chan<- EmptySignal) {
+	for {
+		select {
+		case status := <-StatusReceiver:
+			if err := m.HandleUserStatus(status); err != nil {
+				slog.Error("user status not updated", "error", err)
 			}
-
-			if m.isOccupied(&status.CurrentPosition) {
-				kind := m.Map.Rows[status.CurrentPosition.Y].Cells[status.CurrentPosition.X].Kind
-
-				if kind == owner_kind.COIN {
-					coinIdx := slices.IndexFunc(m.coins, func(coinPosition *Position) bool {
-						return coinPosition.X == status.CurrentPosition.X && coinPosition.Y == status.CurrentPosition.Y
-					})
-
-					m.coins = append(m.coins[:coinIdx], m.coins[coinIdx+1:]...)
-
-					if len(m.coins) == 0 {
-						m.InitializeCoins()
-					}
-
-					scoreboard.IncreaseUserScore(status.Id)
-				} else if kind == owner_kind.ITEM_LENGTHEN_VISION || kind == owner_kind.ITEM_SHORTEN_VISION {
-					if resetTimer := userStatuses.GetResetTimer(status.Id); resetTimer != nil {
-						resetTimer.Stop()
-					}
-
-					userStatuses.SetResetTimer(status.Id, time.AfterFunc(RESET_DURATION, func() {
-						userStatuses.SetItemEffect(status.Id, item_effects.NONE)
-					}))
-
-					itemIdx := slices.IndexFunc(m.randomItems, func(itemPosition *Position) bool {
-						return itemPosition.X == status.CurrentPosition.X && itemPosition.Y == status.CurrentPosition.Y
-					})
-
-					if itemIdx == -1 {
-						slog.Debug("Item exists but not found in slice")
-					}
-
-					m.randomItems = append(m.randomItems[:itemIdx], m.randomItems[itemIdx+1:]...)
-
-					if len(m.randomItems) == 0 {
-						m.InitializeItems()
-					}
-
-					if kind == owner_kind.ITEM_LENGTHEN_VISION {
-						// UserStatuses를 변조하고 있으나, 변조하는 스레드들이 각자 RWMutexMap의 Lock을 얻어야하므로 상관없다.
-						userStatuses.SetItemEffect(status.Id, item_effects.LENGTHEN)
-					} else if kind == owner_kind.ITEM_SHORTEN_VISION {
-						userStatuses.SetItemEffect(status.Id, item_effects.SHORTEN)
-					}
-				} else {
-					continue
-				}
-			}
-			// 이 currentPosition은 서버에 저장된 user의 위치 정보로, userStatus.CurrentPosition과는 다른 값이다.
-			currentPosition, exists := userStatuses.GetUserPosition(status.Id)
-
-			if exists {
-				m.UpdateMap(currentPosition.X, currentPosition.Y, &Cell{
-					Occupied: false,
-					Owner:    "",
-					Kind:     owner_kind.GROUND,
-				})
-			}
-
-			userStatuses.SetUserPosition(status.Id, status.CurrentPosition.X, status.CurrentPosition.Y)
-
-			m.UpdateMap(status.CurrentPosition.X, status.CurrentPosition.Y, &Cell{
-				Occupied: true,
-				Owner:    status.Id,
-				Kind:     owner_kind.USER,
-			})
-
-		} else if status.Type == status_types.COIN {
+		case <-CoinMoveSignal:
 			m.MoveCoinsRandomly()
+		case attack := <-AttackReceiver:
+			m.HandleAttack(attack)
 		}
 
 		globalMapUpdateChannel <- Signal
 	}
+}
+
+func (m *GameMap) HandleUserStatus(status *Status) error {
+	if m.isOutOfRange(&status.CurrentPosition) {
+		return ErrOutOfRange
+	}
+
+	if m.isOccupied(&status.CurrentPosition) {
+		kind := m.Map.Rows[status.CurrentPosition.Y].Cells[status.CurrentPosition.X].Kind
+
+		if kind == owner_kind.COIN {
+			coinIdx := slices.IndexFunc(m.coins, func(coinPosition *Position) bool {
+				return coinPosition.X == status.CurrentPosition.X && coinPosition.Y == status.CurrentPosition.Y
+			})
+
+			m.coins = append(m.coins[:coinIdx], m.coins[coinIdx+1:]...)
+
+			if len(m.coins) == 0 {
+				m.InitializeCoins()
+			}
+
+			scoreboard.IncreaseUserScore(status.Id)
+		} else if kind == owner_kind.ITEM_LENGTHEN_VISION || kind == owner_kind.ITEM_SHORTEN_VISION {
+			if resetTimer := userStatuses.GetResetTimer(status.Id); resetTimer != nil {
+				resetTimer.Stop()
+			}
+
+			userStatuses.SetResetTimer(status.Id, time.AfterFunc(RESET_DURATION, func() {
+				userStatuses.SetItemEffect(status.Id, item_effects.NONE)
+			}))
+
+			itemIdx := slices.IndexFunc(m.randomItems, func(itemPosition *Position) bool {
+				return itemPosition.X == status.CurrentPosition.X && itemPosition.Y == status.CurrentPosition.Y
+			})
+
+			if itemIdx == -1 {
+				slog.Debug("Item exists but not found in slice")
+			}
+
+			m.randomItems = append(m.randomItems[:itemIdx], m.randomItems[itemIdx+1:]...)
+
+			if len(m.randomItems) == 0 {
+				m.InitializeItems()
+			}
+
+			if kind == owner_kind.ITEM_LENGTHEN_VISION {
+				// UserStatuses를 변조하고 있으나, 변조하는 스레드들이 각자 RWMutexMap의 Lock을 얻어야하므로 상관없다.
+				userStatuses.SetItemEffect(status.Id, item_effects.LENGTHEN)
+			} else if kind == owner_kind.ITEM_SHORTEN_VISION {
+				userStatuses.SetItemEffect(status.Id, item_effects.SHORTEN)
+			}
+		} else {
+			// 이동하려는 자리를 다른 유저가 선점한 경우
+			return ErrOccupied
+		}
+	}
+	// 이 currentPosition은 서버에 저장된 user의 위치 정보로, userStatus.CurrentPosition과는 다른 값이다.
+	currentPosition, exists := userStatuses.GetUserPosition(status.Id)
+
+	if exists {
+		m.UpdateMap(currentPosition.X, currentPosition.Y, &Cell{
+			Occupied: false,
+			Owner:    "",
+			Kind:     owner_kind.GROUND,
+		})
+	}
+
+	userStatuses.SetUserPosition(status.Id, status.CurrentPosition.X, status.CurrentPosition.Y)
+
+	m.UpdateMap(status.CurrentPosition.X, status.CurrentPosition.Y, &Cell{
+		Occupied: true,
+		Owner:    status.Id,
+		Kind:     owner_kind.USER,
+	})
+
+	return nil
 }
 
 func (m *GameMap) GetRelatedPositions(userPosition *Position, visibleRange int32) []*RelatedPosition {

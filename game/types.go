@@ -30,9 +30,14 @@ type Item struct {
 	Amount int32
 }
 type Status struct {
-	Type            string
 	Id              string
 	CurrentPosition Position
+}
+
+type Attack struct {
+	UserId         string
+	UserPosition   Position
+	AttackPosition Position
 }
 
 // boolean보다 효율적. 데이터 크기가 0임

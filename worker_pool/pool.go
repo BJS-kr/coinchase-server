@@ -35,7 +35,7 @@ const WORKER_INIT_TIMEOUT_SEC = time.Second * 3
 // statusChannel을 인자로 받는 이유
 // status update는 성능 최적화와 가독성을 위해 mutex 사용을 최소화해야한다.
 // 각 worker가 같은 채널을 바라보고 있다면 game map이 보다 빠르게 처리할 수 있을 것이다.
-func (wp *WorkerPool) LaunchWorkers(workerCount int, statusChannel chan *game.Status, maximumWorkerCount int) {
+func (wp *WorkerPool) LaunchWorkers(workerCount int, maximumWorkerCount int) {
 
 	var initWorker sync.WaitGroup
 
@@ -61,7 +61,7 @@ func (wp *WorkerPool) LaunchWorkers(workerCount int, statusChannel chan *game.St
 		workerId := uuid.New().String()
 		wp.Put(workerId, worker)
 
-		go worker.ReceiveDataFromClient(tcpListener, statusChannel, &initWorker, sendMutualTerminationSignal, mutualTerminationContext)
+		go worker.ReceiveDataFromClient(tcpListener, &initWorker, sendMutualTerminationSignal, mutualTerminationContext)
 	}
 
 	workerInitializationTimeout, workerInitializationTimeoutCancel := context.WithTimeout(context.Background(), WORKER_INIT_TIMEOUT_SEC)

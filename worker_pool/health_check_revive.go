@@ -12,7 +12,7 @@ import (
 
 const WORKER_HEALTH_CHECK_TIMEOUT = time.Second * 10
 
-func HealthCheckAndRevive(intervalSec int, statusChannel chan *game.Status, maximumWorkerCount int) {
+func HealthCheckAndRevive(intervalSec int, maximumWorkerCount int) {
 	workerPool := GetWorkerPool()
 
 	for {
@@ -23,7 +23,7 @@ func HealthCheckAndRevive(intervalSec int, statusChannel chan *game.Status, maxi
 				slog.Debug("terminated worker discovered")
 
 				workerPool.Delete(workerId)
-				workerPool.LaunchWorkers(1, statusChannel, maximumWorkerCount)
+				workerPool.LaunchWorkers(1, maximumWorkerCount)
 			}
 
 			timeout, cancel := context.WithTimeout(context.Background(), WORKER_HEALTH_CHECK_TIMEOUT)
@@ -39,7 +39,7 @@ func HealthCheckAndRevive(intervalSec int, statusChannel chan *game.Status, maxi
 					worker.ForceExitSignal <- game.Signal
 					close(worker.ForceExitSignal)
 
-					workerPool.LaunchWorkers(1, statusChannel, maximumWorkerCount)
+					workerPool.LaunchWorkers(1, maximumWorkerCount)
 				}
 			case <-worker.HealthChecker:
 				cancel()
