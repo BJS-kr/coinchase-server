@@ -12,7 +12,10 @@ import (
 	"time"
 )
 
-const RESET_DURATION = time.Second * 6
+const (
+	RESET_DURATION = time.Second * 6
+	ATTACK_DAMAGE  = 3
+)
 
 var (
 	AttackReceiver = make(chan *Attack)
@@ -60,6 +63,24 @@ func (m *GameMap) StartUpdateMap(globalMapUpdateChannel chan<- EmptySignal) {
 		}
 
 		globalMapUpdateChannel <- Signal
+	}
+}
+
+func (m *GameMap) GetKind(position *Position) TileKind {
+	return m.Map.Rows[position.Y].Cells[position.X].Kind
+}
+
+func (m *GameMap) GetOwner(position *Position) string {
+	return m.Map.Rows[position.Y].Cells[position.X].Owner
+}
+
+func (m *GameMap) HandleAttack(attack *Attack) {
+	if m.isOutOfRange(&attack.AttackPosition) || m.isOccupied(&attack.UserPosition) {
+		return
+	}
+
+	if m.GetKind(&attack.AttackPosition) == owner_kind.USER {
+		scoreboard.DecreaseUserScore(m.GetOwner(&attack.AttackPosition), ATTACK_DAMAGE)
 	}
 }
 
@@ -140,7 +161,7 @@ func (m *GameMap) HandleUserStatus(status *Status) error {
 }
 
 func (m *GameMap) GetRelatedPositions(userPosition *Position, visibleRange int32) []*RelatedPosition {
-	surroundedPositions := make([]Position, 0)
+	surroundedPositions := make([]Position, 0, 8)
 
 	for x := -visibleRange; x <= visibleRange; x++ {
 		for y := -visibleRange; y <= visibleRange; y++ {

@@ -14,6 +14,17 @@ func (sc *Scoreboard) IncreaseUserScore(userId string) {
 	sc.board[userId] += 1
 }
 
+func (sc *Scoreboard) DecreaseUserScore(userId string, amount int32) {
+	sc.rwmtx.Lock()
+	defer sc.rwmtx.Unlock()
+
+	if sc.board[userId] < amount {
+		sc.board[userId] = 0
+	} else {
+		sc.board[userId] -= amount
+	}
+}
+
 func (sc *Scoreboard) DeleteUserFromScoreboard(userId string) {
 	sc.rwmtx.Lock()
 	defer sc.rwmtx.Unlock()

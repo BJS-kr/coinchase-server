@@ -232,6 +232,12 @@ func TestPlay(t *testing.T) {
 						}
 						// 유저의 위치를 서버에 전송
 						marshaledData = append(marshaledData, '$')
+						_, err = conn.Write([]byte{0})
+
+						if err != nil {
+							t.Log(err)
+						}
+
 						_, err = conn.Write(marshaledData)
 
 						if err != nil {
