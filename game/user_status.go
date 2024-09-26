@@ -89,3 +89,10 @@ func (uss *UserStatuses) GetResetTimer(userId string) *time.Timer {
 
 	return uss.StatusMap[userId].ResetTimer
 }
+
+func (uss *UserStatuses) RemoveUser(userId string) {
+	uss.rwmtx.Lock()
+	defer uss.rwmtx.Unlock()
+
+	delete(uss.StatusMap, userId)
+}

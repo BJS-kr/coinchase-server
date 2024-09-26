@@ -45,6 +45,13 @@ func (sc *Scoreboard) GetCopiedBoard() map[string]int32 {
 	return copiedBoard
 }
 
+func (sc *Scoreboard) RemoveUser(userId string) {
+	sc.rwmtx.Lock()
+	defer sc.rwmtx.Unlock()
+
+	delete(sc.board, userId)
+}
+
 func GetScoreboard() *Scoreboard {
 	return &scoreboard
 }

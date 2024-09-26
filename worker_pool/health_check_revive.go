@@ -24,6 +24,8 @@ func HealthCheckAndRevive(intervalSec int, maximumWorkerCount int) {
 
 				workerPool.Delete(workerId)
 				workerPool.LaunchWorkers(1, maximumWorkerCount)
+
+				continue
 			}
 
 			timeout, cancel := context.WithTimeout(context.Background(), WORKER_HEALTH_CHECK_TIMEOUT)
@@ -32,6 +34,7 @@ func HealthCheckAndRevive(intervalSec int, maximumWorkerCount int) {
 			select {
 			case <-timeout.Done():
 				{
+					slog.Debug("health check failed")
 					workerPool.Delete(workerId)
 					// worker와 TCP Receiver가 mutually terminate되므로
 					// health check 이상시 worker에게 force exit signal을 전송하면 자원들이 정리된다.
@@ -42,9 +45,9 @@ func HealthCheckAndRevive(intervalSec int, maximumWorkerCount int) {
 					workerPool.LaunchWorkers(1, maximumWorkerCount)
 				}
 			case <-worker.HealthChecker:
+				slog.Debug("health check success")
 				cancel()
 			}
 		}
-
 	}
 }

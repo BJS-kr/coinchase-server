@@ -54,9 +54,8 @@ func (m *GameMap) StartUpdateMap(globalMapUpdateChannel chan<- EmptySignal) {
 	for {
 		select {
 		case status := <-StatusReceiver:
-			if err := m.HandleUserStatus(status); err != nil {
-				slog.Error("user status not updated", "error", err)
-			}
+			m.HandleUserStatus(status)
+
 		case <-CoinMoveSignal:
 			m.MoveCoinsRandomly()
 		case attack := <-AttackReceiver:
@@ -76,7 +75,7 @@ func (m *GameMap) GetOwner(position *Position) string {
 }
 
 func (m *GameMap) HandleAttack(attack *Attack) {
-	if m.isOutOfRange(&attack.AttackPosition) || m.isOccupied(&attack.UserPosition) {
+	if m.isOutOfRange(&attack.AttackPosition) || m.isOutOfRange(&attack.UserPosition) {
 		return
 	}
 
@@ -159,6 +158,21 @@ func (m *GameMap) HandleUserStatus(status *Status) error {
 	})
 
 	return nil
+}
+
+func (m *GameMap) RemoveUser(userId string) {
+	m.rwmtx.Lock()
+	defer m.rwmtx.Unlock()
+	userPosition, exists := userStatuses.GetUserPosition(userId)
+
+	if !exists {
+		return
+	}
+
+	m.Map.Rows[userPosition.Y].Cells[userPosition.X] = &Cell{
+		Occupied: false,
+		Kind:     owner_kind.GROUND,
+	}
 }
 
 func (m *GameMap) GetRelatedPositions(userPosition *Position, visibleRange int32) []*RelatedPosition {

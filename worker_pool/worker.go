@@ -27,11 +27,11 @@ import (
 // main goroutine이 종료된다고 해서 나머지 goroutine이 동시에 처리되는 것은 아니나, 이는 leak을 만들지 않고 결국 종료된다.
 // 자세한 내용은 https://stackoverflow.com/questions/72553044/what-happens-to-unfinished-goroutines-when-the-main-parent-goroutine-exits-or-re을 참고
 const (
-	READ_DEADLINE      = time.Second * 300
-	BUFFER_SIZE        = 4096
-	BUFFER_DELIMITER   = '$'
-	PACKET_TYPE_STATUS = 0
-	PACKET_TYPE_ATTACK = 1
+	READ_DEADLINE           = time.Second * 300
+	BUFFER_SIZE             = 4096
+	BUFFER_DELIMITER        = '$'
+	PACKET_TYPE_STATUS byte = 0
+	PACKET_TYPE_ATTACK byte = 1
 )
 
 func (w *Worker) SetClientInformation(userId string, clientIP *net.IP, clientPort int) error {
@@ -73,8 +73,8 @@ func (w *Worker) StartSendUserRelatedDataToClient() error {
 }
 
 func (w *Worker) ReceiveDataFromClient(tcpListener *net.TCPListener, initWorker *sync.WaitGroup, sendMutualTerminationSignal func(), mutualTerminationContext context.Context) {
-	defer sendMutualTerminationSignal()
 	defer tcpListener.Close()
+	defer sendMutualTerminationSignal()
 
 	initWorker.Done()
 
@@ -113,7 +113,8 @@ func (w *Worker) ReceiveDataFromClient(tcpListener *net.TCPListener, initWorker 
 		case <-w.ForceExitSignal:
 			slog.Info("force exit signal received in ReceiveDataFromClient")
 			return
-
+		case <-w.HealthChecker:
+			w.HealthChecker <- game.Signal
 		default:
 			// 성능을 위해 buffer를 재사용한다.
 			// buffer에 nil을 할당하게 되면 underlying array가 garbage collection되므로 단순히 slice의 길이를 0으로 만든다.
@@ -125,11 +126,13 @@ func (w *Worker) ReceiveDataFromClient(tcpListener *net.TCPListener, initWorker 
 					continue
 				}
 
-				log.Fatal("Read from TCP connection failed " + err.Error())
+				log.Println("Read from TCP connection failed " + err.Error())
+				sendMutualTerminationSignal()
 			}
 
 			if size >= BUFFER_SIZE {
-				log.Fatal("received TCP packet size exceeded the buffer size")
+				log.Println("received TCP packet size exceeded the buffer size")
+				sendMutualTerminationSignal()
 			}
 
 			if size > 0 {
@@ -143,16 +146,19 @@ func (w *Worker) ReceiveDataFromClient(tcpListener *net.TCPListener, initWorker 
 							queueBuffer.Write(data)
 							break
 						} else {
-							log.Fatal("ReadBytes returned error other than EOF(unexpected)", err.Error())
+							log.Println("ReadBytes returned error other than EOF(unexpected)", err.Error())
+							sendMutualTerminationSignal()
 						}
 					}
 
 					switch data[0] {
 					case PACKET_TYPE_STATUS:
+
 						protoStatus := new(protodef.Status)
 
 						if err := proto.Unmarshal(data[1:len(data)-1], protoStatus); err != nil {
-							log.Fatal("TCP unmarshal failed\n" + err.Error())
+							log.Println("TCP unmarshal failed\n" + err.Error())
+							sendMutualTerminationSignal()
 						}
 
 						game.StatusReceiver <- &game.Status{
@@ -163,10 +169,12 @@ func (w *Worker) ReceiveDataFromClient(tcpListener *net.TCPListener, initWorker 
 							},
 						}
 					case PACKET_TYPE_ATTACK:
+
 						protoAttack := new(protodef.Attack)
 
 						if err := proto.Unmarshal(data[1:len(data)-1], protoAttack); err != nil {
-							log.Fatal("TCP unmarshal failed\n" + err.Error())
+							log.Println("TCP unmarshal failed\n" + err.Error())
+							sendMutualTerminationSignal()
 						}
 
 						game.AttackReceiver <- &game.Attack{
@@ -232,6 +240,7 @@ func (w *Worker) CollectToSendUserRelatedDataToClient(sendMutualTerminationSigna
 				}
 
 				relatedPositions := gameMap.GetRelatedPositions(userStatus.Position, int32(userStatus.ItemEffect))
+
 				protoUserPosition := &protodef.Position{
 					X: userStatus.Position.X,
 					Y: userStatus.Position.Y,
@@ -279,6 +288,10 @@ func (w *Worker) CollectToSendUserRelatedDataToClient(sendMutualTerminationSigna
 
 					// panic은 연관된 모든 자원을 정리하도록 설계되어 있음
 					if faultTolerance <= 0 {
+						gameMap.RemoveUser(clientId)
+						userStatuses.RemoveUser(clientId)
+						scoreboard.RemoveUser(clientId)
+
 						panic(err)
 					}
 				}
